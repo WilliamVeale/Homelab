@@ -8,6 +8,7 @@ So far I have implemented:
 - `kube-prometheus-stack` for cluster monitoring
 - CF Tunnels for external access
 - Plex Media Server
+- `vikunja` - task manager
 
 ### Future Goals
 - NAS for photography storage and editing. As well as iSCSI/NFS support for the K8s cluster.
