@@ -41,6 +41,18 @@ spec:
         existingSecret: grafana-secret
         userKey: admin-user
         passwordKey: admin-password
+      # Without this Grafana keeps its SQLite database on an emptyDir, so
+      # hand-made dashboards, users and preferences are lost on every restart.
+      persistence:
+        enabled: true
+        type: pvc
+        storageClassName: local-path
+        accessModes:
+          - ReadWriteOnce
+        size: 5Gi
+      # RWO claim + SQLite: never let two pods run at once.
+      deploymentStrategy:
+        type: Recreate
     prometheus:
       prometheusSpec:
         # ~0.6 GB/day at the current ~104k active series.
