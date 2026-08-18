@@ -41,3 +41,20 @@ spec:
         existingSecret: grafana-secret
         userKey: admin-user
         passwordKey: admin-password
+    prometheus:
+      prometheusSpec:
+        # ~0.6 GB/day at the current ~104k active series.
+        retention: 90d
+        # Hard cap well under the claim so compaction and the WAL have room.
+        # local-path does not support volume expansion, so the claim cannot
+        # be grown later without recreating it.
+        retentionSize: 50GB
+        storageSpec:
+          volumeClaimTemplate:
+            spec:
+              storageClassName: local-path
+              accessModes:
+                - ReadWriteOnce
+              resources:
+                requests:
+                  storage: 60Gi
