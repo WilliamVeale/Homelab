@@ -5,6 +5,8 @@ metadata:
   namespace: monitoring
 spec:
   interval: 30m
+  # This stack is slow to converge; 5m (the default) is not enough.
+  timeout: 20m
   chart:
     spec:
       chart: kube-prometheus-stack
@@ -20,8 +22,12 @@ spec:
       interval: 12h
   install:
     crds: Create
+    remediation:
+      retries: 3
   upgrade:
     crds: CreateReplace
+    remediation:
+      retries: 3
   driftDetection:
     mode: enabled
     ignore:
