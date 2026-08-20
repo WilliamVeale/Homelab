@@ -13,6 +13,5 @@ So far I have implemented:
 ### Future Goals
 - NAS for photography storage and editing. As well as iSCSI/NFS support for the K8s cluster.
 - Separate Control Plane node from Worker Node hardware
-- Browsertrix Helm deployment
 - Cluster backups 
 - and more!
