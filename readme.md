@@ -9,6 +9,7 @@ So far I have implemented:
 - CF Tunnels for external access
 - Plex Media Server
 - `vikunja` - task manager (private: Cloudflare Tunnel only, no Ingress, self-registration disabled, NetworkPolicy limits pod ingress to `cloudflared`)
+- `freshrss` - RSS feed reader (private: Cloudflare Tunnel only, no Ingress, NetworkPolicy limits pod ingress to `cloudflared`)
 
 ### Future Goals
 - NAS for photography storage and editing. As well as iSCSI/NFS support for the K8s cluster.

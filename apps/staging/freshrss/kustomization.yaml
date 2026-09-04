@@ -1,0 +1,9 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: freshrss
+resources:
+  - ../../base/freshrss
+  - cloudflare.yaml
+  - cloudflare-secret.yaml
+  - freshrss-env-secret.yaml
+  - networkpolicy.yaml

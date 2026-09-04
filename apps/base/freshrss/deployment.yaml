@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: freshrss
+  name: freshrss
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: freshrss
+  template:
+    metadata:
+      labels:
+        app: freshrss
+    spec:
+      containers:
+      - image: freshrss/freshrss:1.29.1
+        name: freshrss
+        ports:
+          - containerPort: 80
+        env:
+          # Refresh all feeds every 20 minutes via the image's built-in cron.
+          - name: CRON_MIN
+            value: "*/20"
+          # k3s pod CIDR: cloudflared pods are the proxy in front of FreshRSS.
+          - name: TRUSTED_PROXY
+            value: "10.42.0.0/16"
+          # Runs cli/do-install.php on first start only (exit 3 = already installed).
+          - name: FRESHRSS_INSTALL
+            value: "--api-enabled --base-url https://rss.williamveale.net --db-type sqlite --default-user william --language en"
+        envFrom:
+          # FRESHRSS_USER: --user/--password/--api-password, runs cli/create-user.php on first start only.
+          - secretRef:
+              name: freshrss-env
+        securityContext:
+          allowPrivilegeEscalation: false
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 60
+          periodSeconds: 20
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            memory: 1Gi
+        volumeMounts:
+          - name: data
+            mountPath: /var/www/FreshRSS/data
+          - name: extensions
+            mountPath: /var/www/FreshRSS/extensions
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: freshrss-data-pvc
+        - name: extensions
+          persistentVolumeClaim:
+            claimName: freshrss-extensions-pvc

@@ -1,0 +1,18 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: freshrss-only-from-cloudflared
+spec:
+  podSelector:
+    matchLabels:
+      app: freshrss
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: cloudflared
+      ports:
+        - port: 80
+          protocol: TCP
