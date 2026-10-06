@@ -9,6 +9,7 @@ So far I have implemented:
 - CF Tunnels for external access
 - Plex Media Server
 - `vikunja` - task manager (private: Cloudflare Tunnel only, no Ingress, self-registration disabled, NetworkPolicy limits pod ingress to `cloudflared`)
+  - `vikunja-move-log` CronJob - every 15 min, comments `Moved: A → B` on each card that changed column, since Vikunja keeps no move history
 - `freshrss` - RSS feed reader (private: Cloudflare Tunnel only, no Ingress, NetworkPolicy limits pod ingress to `cloudflared`)
 
 ### Future Goals

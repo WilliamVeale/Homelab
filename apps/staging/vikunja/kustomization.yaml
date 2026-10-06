@@ -7,3 +7,5 @@ resources:
   - cloudflare-secret.yaml
   - vikunja-env-secret.yaml
   - networkpolicy.yaml
+  - move-log-networkpolicy.yaml
+  - move-log-secret.yaml

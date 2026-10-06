@@ -5,3 +5,8 @@ resources:
   - deployment.yaml
   - storage.yaml
   - service.yaml
+  - move-log.yaml
+configMapGenerator:
+  - name: vikunja-move-log
+    files:
+      - move_log.py

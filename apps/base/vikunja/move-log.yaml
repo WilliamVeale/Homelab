@@ -1,0 +1,81 @@
+# Posts a "Moved: A → B" comment on every Vikunja card that changes column.
+# Vikunja itself keeps no move history; see move_log.py for why.
+# Token: Secret vikunja-move-log (apps/staging/vikunja). Network: the
+# vikunja-from-move-log NetworkPolicy lets these pods reach port 3456.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vikunja-move-log-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 16Mi
+  storageClassName: local-path
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: vikunja-move-log
+spec:
+  schedule: "*/15 * * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 300
+      template:
+        metadata:
+          labels:
+            app: vikunja-move-log
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+          containers:
+            - name: move-log
+              image: python:3.14.8-alpine3.24
+              command: ["python", "/app/move_log.py"]
+              env:
+                - name: VIKUNJA_API
+                  value: "http://vikunja:3456/api/v1"
+                - name: STATE_FILE
+                  value: "/state/state.json"
+                - name: PYTHONDONTWRITEBYTECODE
+                  value: "1"
+                - name: VIKUNJA_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: vikunja-move-log
+                      key: VIKUNJA_TOKEN
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  memory: 128Mi
+              volumeMounts:
+                - name: script
+                  mountPath: /app
+                  readOnly: true
+                - name: state
+                  mountPath: /state
+          volumes:
+            - name: script
+              configMap:
+                name: vikunja-move-log
+            - name: state
+              persistentVolumeClaim:
+                claimName: vikunja-move-log-pvc
