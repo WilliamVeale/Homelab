@@ -5,3 +5,17 @@ resources:
   - deployment.yaml
   - storage.yaml
   - service.yaml
+# AI Summary extension, vendored from https://github.com/deimosfr/xExtension-AiSummary
+# at commit 98a2a9c (GPL-3.0, see xExtension-AiSummary/LICENSE). Only the
+# English i18n is kept. To update: copy the same files from a newer commit and
+# bump the commit above. Keys are flat; deployment.yaml maps each to its path.
+configMapGenerator:
+  - name: freshrss-ext-aisummary
+    files:
+      - extension.php=xExtension-AiSummary/extension.php
+      - metadata.json=xExtension-AiSummary/metadata.json
+      - configure.phtml=xExtension-AiSummary/configure.phtml
+      - AiSummaryController.php=xExtension-AiSummary/Controllers/AiSummaryController.php
+      - script.js=xExtension-AiSummary/static/script.js
+      - style.css=xExtension-AiSummary/static/style.css
+      - i18n-en-ext.php=xExtension-AiSummary/i18n/en/ext.php

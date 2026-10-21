@@ -1,0 +1,566 @@
+<?php
+
+declare(strict_types=1);
+
+final class FreshExtension_AiSummary_Controller extends Minz_ActionController {
+
+	private const DEFAULT_MODELS = [
+		'openai' => 'gpt-5-nano',
+		'anthropic' => 'claude-haiku-4-5',
+		'gemini' => 'gemini-3.5-flash-lite',
+		'ollama' => 'llama3.2',
+	];
+
+	private const DEFAULT_OPENAI_URL = 'https://api.openai.com/v1';
+
+	private const DEFAULT_OLLAMA_URL = 'http://localhost:11434';
+
+	private const CONNECT_TIMEOUT = 10;
+
+	private int $requestTimeout = AiSummaryExtension::TIMEOUT_DEFAULT;
+
+	private const MAX_CONTENT_LENGTH = 12000;
+
+	private const MIN_CONTENT_LENGTH = 200;
+
+	private const DEFAULT_PROMPT = <<<'PROMPT'
+Based on the following requirements, please analyze the article and produce the output that includes a concise summary, key takeaways, and additional contextual insights. The output language should be {language}. Use clear, accessible, and natural phrasing suitable for general readers.
+
+1. Provide a 50 words long concise and engaging summary that captures the article's core viewpoints and main idea.
+2. List the most important insights or facts using clear and easy-to-understand language.
+3. If the article contains chronological information or significant events, include a short timeline summarizing the key moments in order.
+4. Give a brief background to help readers understand the article's context — such as why the topic matters or what situation it addresses.
+
+Article Title: {title}
+Article Content: {content}
+
+Provide the content directly, without any additional explanatory text.
+PROMPT;
+
+	/** @var array<string, string> */
+	private const LANGUAGE_NAMES = [
+		'cs' => 'Czech',
+		'de' => 'German',
+		'en' => 'English',
+		'es' => 'Spanish',
+		'fr' => 'French',
+		'it' => 'Italian',
+		'ja' => 'Japanese',
+		'ko' => 'Korean',
+		'nl' => 'Dutch',
+		'pl' => 'Polish',
+		'pt-br' => 'Portuguese',
+		'ru' => 'Russian',
+		'tr' => 'Turkish',
+		'zh-cn' => 'Chinese',
+	];
+
+	public function summarizeAction(): void {
+		$this->view->_layout(null);
+
+		// --- Validation phase (JSON errors) ---
+		if (!FreshRSS_Auth::hasAccess()) {
+			header('Content-Type: application/json; charset=UTF-8');
+			$this->sendJsonError('Unauthorized', 403);
+			return;
+		}
+
+		// CSRF protection
+		if (Minz_Request::paramString('_csrf') !== FreshRSS_Auth::csrfToken()) {
+			Minz_Error::error(403);
+		}
+
+		$id = Minz_Request::paramString('id');
+		if ($id === '') {
+			header('Content-Type: application/json; charset=UTF-8');
+			$this->sendJsonError('Missing entry ID', 400);
+			return;
+		}
+
+		$entryDao = FreshRSS_Factory::createEntryDao();
+		$entry = $entryDao->searchById($id);
+		if ($entry === null) {
+			header('Content-Type: application/json; charset=UTF-8');
+			$this->sendJsonError('Entry not found', 404);
+			return;
+		}
+
+		$user_conf = FreshRSS_Context::userConf();
+		/** @var mixed */
+		$provider = $user_conf->ai_summary_provider;
+		$provider = is_string($provider) ? $provider : 'openai';
+		/** @var mixed */
+		$apiKey = $user_conf->ai_summary_api_key;
+		$apiKey = is_string($apiKey) ? $apiKey : '';
+		/** @var mixed */
+		$model = $user_conf->ai_summary_model;
+		$model = is_string($model) ? $model : '';
+		/** @var mixed */
+		$openAiApiUrl = $user_conf->ai_summary_openai_api_url;
+		$openAiApiUrl = is_string($openAiApiUrl) ? $openAiApiUrl : '';
+		/** @var mixed */
+		$ollamaApiUrl = $user_conf->ai_summary_api_url;
+		$ollamaApiUrl = is_string($ollamaApiUrl) ? $ollamaApiUrl : '';
+		/** @var mixed */
+		$customPrompt = $user_conf->ai_summary_prompt;
+		$customPrompt = is_string($customPrompt) ? $customPrompt : '';
+		/** @var mixed */
+		$timeout = $user_conf->ai_summary_timeout;
+		$timeout = is_int($timeout) && $timeout >= AiSummaryExtension::TIMEOUT_MIN && $timeout <= AiSummaryExtension::TIMEOUT_MAX
+			? $timeout
+			: AiSummaryExtension::TIMEOUT_DEFAULT;
+
+		if ($provider !== 'ollama' && $apiKey === '') {
+			header('Content-Type: application/json; charset=UTF-8');
+			$this->sendJsonError('API key not configured. Please configure the extension settings.', 400);
+			return;
+		}
+
+		// --- Streaming phase (SSE) ---
+		$this->beginStreaming();
+
+		$content = $this->extractText($entry->content());
+
+		// If RSS content is too short, fetch the full article from the original URL
+		if (mb_strlen($content) < self::MIN_CONTENT_LENGTH) {
+			$link = $entry->link();
+			if ($link !== '') {
+				$statusMsg = json_encode(['message' => 'Fetching full article…']);
+				if (is_string($statusMsg)) {
+					$this->sendEvent('status', $statusMsg);
+				}
+				$fetched = $this->fetchArticleContent($link);
+				if ($fetched !== '') {
+					$content = $fetched;
+				}
+			}
+		}
+
+		$content = mb_substr($content, 0, self::MAX_CONTENT_LENGTH);
+
+		$promptTemplate = $customPrompt !== '' ? $customPrompt : self::DEFAULT_PROMPT;
+		/** @var mixed */
+		$langCode = $user_conf->ai_summary_language;
+		$langCode = is_string($langCode) ? $langCode : '';
+		if ($langCode === '') {
+			/** @var mixed */
+			$langCode = $user_conf->language;
+			$langCode = is_string($langCode) ? $langCode : 'en';
+		}
+		$language = self::LANGUAGE_NAMES[$langCode] ?? $langCode;
+
+		// Template prompt: placeholders are substituted and sent as user message
+		// Legacy prompt (no {content}): used as system message with article as user message
+		if (str_contains($promptTemplate, '{content}')) {
+			$systemPrompt = '';
+			$userPrompt = str_replace(
+				['{language}', '{title}', '{content}'],
+				[$language, $entry->title(), $content],
+				$promptTemplate,
+			);
+		} else {
+			$systemPrompt = $promptTemplate;
+			$userPrompt = 'Title: ' . $entry->title() . "\n\n" . $content;
+		}
+
+		$statusMsg = json_encode(['message' => 'Generating summary…']);
+		if (is_string($statusMsg)) {
+			$this->sendEvent('status', $statusMsg);
+		}
+
+		$this->requestTimeout = $timeout;
+
+		try {
+			match ($provider) {
+				'openai' => $this->callOpenAI(
+					$openAiApiUrl !== '' ? $openAiApiUrl : self::DEFAULT_OPENAI_URL,
+					$apiKey,
+					$model !== '' ? $model : self::DEFAULT_MODELS['openai'],
+					$systemPrompt,
+					$userPrompt,
+				),
+				'anthropic' => $this->callAnthropic($apiKey, $model !== '' ? $model : self::DEFAULT_MODELS['anthropic'], $systemPrompt, $userPrompt),
+				'gemini' => $this->callGemini($apiKey, $model !== '' ? $model : self::DEFAULT_MODELS['gemini'], $systemPrompt, $userPrompt),
+				'ollama' => $this->callOllama(
+					$ollamaApiUrl !== '' ? $ollamaApiUrl : self::DEFAULT_OLLAMA_URL,
+					$model !== '' ? $model : self::DEFAULT_MODELS['ollama'],
+					$systemPrompt,
+					$userPrompt,
+				),
+				default => throw new \RuntimeException('Unknown provider: ' . $provider),
+			};
+			$this->sendEvent('done', '{}');
+		} catch (\Exception $e) {
+			$errorMsg = json_encode(['message' => $e->getMessage()]);
+			if (is_string($errorMsg)) {
+				$this->sendEvent('error', $errorMsg);
+			}
+		}
+	}
+
+	private function beginStreaming(): void {
+		if (defined('AI_SUMMARY_TESTING')) {
+			return;
+		}
+
+		header('Content-Type: text/event-stream; charset=UTF-8');
+		header('Cache-Control: no-cache');
+		header('X-Accel-Buffering: no');
+		@ini_set('output_buffering', 'off');
+		@ini_set('zlib.output_compression', false);
+		if (PHP_SAPI !== 'cli') {
+			while (ob_get_level() > 0) {
+				ob_end_flush();
+			}
+			ob_implicit_flush(true);
+		}
+	}
+
+	private function sendEvent(string $event, string $data): void {
+		echo "event: {$event}\ndata: {$data}\n\n";
+	}
+
+	private function buildOpenAiUrl(string $apiUrl): string {
+		$parts = parse_url($apiUrl);
+		if (!is_array($parts)
+			|| !isset($parts['host'], $parts['scheme'])
+			|| !in_array($parts['scheme'], ['http', 'https'], true)) {
+			throw new \RuntimeException('Invalid OpenAI-compatible API URL.');
+		}
+
+		$apiUrl = rtrim($apiUrl, '/');
+		return $apiUrl . (str_ends_with($apiUrl, '/v1') ? '' : '/v1') . '/chat/completions';
+	}
+
+	private function callOpenAI(string $apiUrl, string $apiKey, string $model, string $systemPrompt, string $userPrompt): void {
+		$messages = [];
+		if ($systemPrompt !== '') {
+			$messages[] = ['role' => 'system', 'content' => $systemPrompt];
+		}
+		$messages[] = ['role' => 'user', 'content' => $userPrompt];
+
+		$this->curlStreamRequest(
+			$this->buildOpenAiUrl($apiUrl),
+			['model' => $model, 'messages' => $messages, 'max_tokens' => 1024, 'stream' => true],
+			['Authorization: Bearer ' . $apiKey, 'Content-Type: application/json'],
+			function (string $line): void {
+				if (!str_starts_with($line, 'data: ')) {
+					return;
+				}
+				$json = substr($line, 6);
+				if (trim($json) === '[DONE]') {
+					return;
+				}
+				$data = json_decode($json, true);
+				if (is_array($data)) {
+					/** @var mixed */
+					$choices = $data['choices'] ?? null;
+					if (is_array($choices) && isset($choices[0])) {
+						/** @var mixed */
+						$choice0 = $choices[0];
+						if (is_array($choice0)) {
+							/** @var mixed */
+							$delta = $choice0['delta'] ?? null;
+							if (is_array($delta)) {
+								$text = $delta['content'] ?? '';
+								$text = is_string($text) ? $text : '';
+								if ($text !== '') {
+									$chunk = json_encode(['text' => $text], JSON_UNESCAPED_UNICODE);
+									if (is_string($chunk)) {
+										$this->sendEvent('chunk', $chunk);
+									}
+								}
+							}
+						}
+					}
+				}
+			},
+		);
+	}
+
+	private function callAnthropic(string $apiKey, string $model, string $systemPrompt, string $userPrompt): void {
+		$payload = [
+			'model' => $model,
+			'max_tokens' => 1024,
+			'stream' => true,
+			'messages' => [
+				['role' => 'user', 'content' => $userPrompt],
+			],
+		];
+		if ($systemPrompt !== '') {
+			$payload['system'] = $systemPrompt;
+		}
+
+		$this->curlStreamRequest(
+			'https://api.anthropic.com/v1/messages',
+			$payload,
+			['x-api-key: ' . $apiKey, 'anthropic-version: 2023-06-01', 'Content-Type: application/json'],
+			function (string $line): void {
+				if (!str_starts_with($line, 'data: ')) {
+					return;
+				}
+				$data = json_decode(substr($line, 6), true);
+				if (is_array($data) && (($data['type'] ?? '') === 'content_block_delta')) {
+					/** @var mixed */
+					$delta = $data['delta'] ?? null;
+					if (is_array($delta)) {
+						$text = $delta['text'] ?? '';
+						$text = is_string($text) ? $text : '';
+						if ($text !== '') {
+							$chunk = json_encode(['text' => $text], JSON_UNESCAPED_UNICODE);
+							if (is_string($chunk)) {
+								$this->sendEvent('chunk', $chunk);
+							}
+						}
+					}
+				}
+			},
+		);
+	}
+
+	private function callGemini(string $apiKey, string $model, string $systemPrompt, string $userPrompt): void {
+		$url = 'https://generativelanguage.googleapis.com/v1beta/models/'
+			. urlencode($model)
+			. ':streamGenerateContent?alt=sse&key=' . urlencode($apiKey);
+
+		$payload = [
+			'contents' => [
+				['parts' => [['text' => $userPrompt]]],
+			],
+		];
+		if ($systemPrompt !== '') {
+			$payload['system_instruction'] = [
+				'parts' => [['text' => $systemPrompt]],
+			];
+		}
+
+		$this->curlStreamRequest(
+			$url,
+			$payload,
+			['Content-Type: application/json'],
+			function (string $line): void {
+				if (!str_starts_with($line, 'data: ')) {
+					return;
+				}
+				$data = json_decode(substr($line, 6), true);
+				if (is_array($data)) {
+					/** @var mixed */
+					$candidates = $data['candidates'] ?? null;
+					if (is_array($candidates) && isset($candidates[0])) {
+						/** @var mixed */
+						$candidate0 = $candidates[0];
+						if (is_array($candidate0)) {
+							/** @var mixed */
+							$contentNode = $candidate0['content'] ?? null;
+							if (is_array($contentNode)) {
+								/** @var mixed */
+								$parts = $contentNode['parts'] ?? null;
+								if (is_array($parts) && isset($parts[0])) {
+									/** @var mixed */
+									$part0 = $parts[0];
+									if (is_array($part0)) {
+										$text = $part0['text'] ?? '';
+										$text = is_string($text) ? $text : '';
+										if ($text !== '') {
+											$chunk = json_encode(['text' => $text], JSON_UNESCAPED_UNICODE);
+											if (is_string($chunk)) {
+												$this->sendEvent('chunk', $chunk);
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			},
+		);
+	}
+
+	private function callOllama(string $apiUrl, string $model, string $systemPrompt, string $userPrompt): void {
+		$url = rtrim($apiUrl, '/') . '/api/chat';
+
+		$messages = [];
+		if ($systemPrompt !== '') {
+			$messages[] = ['role' => 'system', 'content' => $systemPrompt];
+		}
+		$messages[] = ['role' => 'user', 'content' => $userPrompt];
+
+		$this->curlStreamRequest(
+			$url,
+			['model' => $model, 'messages' => $messages],
+			['Content-Type: application/json'],
+			function (string $line): void {
+				$data = json_decode($line, true);
+				if (!is_array($data)) {
+					return;
+				}
+				if (isset($data['error'])) {
+					$errorObj = $data['error'];
+					$msg = is_string($errorObj) ? $errorObj : (is_array($errorObj) ? ($errorObj['message'] ?? 'Unknown error') : 'Unknown error');
+					$msg = is_string($msg) ? $msg : 'Unknown error';
+					throw new \RuntimeException('Ollama: ' . $msg);
+				}
+				/** @var mixed */
+				$messageNode = $data['message'] ?? null;
+				if (is_array($messageNode)) {
+					$text = $messageNode['content'] ?? '';
+					$text = is_string($text) ? $text : '';
+					if ($text !== '') {
+						$chunk = json_encode(['text' => $text], JSON_UNESCAPED_UNICODE);
+						if (is_string($chunk)) {
+							$this->sendEvent('chunk', $chunk);
+						}
+					}
+				}
+			},
+		);
+	}
+
+	private function extractText(string $html): string {
+		$text = strip_tags($html);
+		$text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+		$text = (string) preg_replace('/\s+/', ' ', trim($text));
+		return $text;
+	}
+
+	private function fetchArticleContent(string $url): string {
+		$scheme = parse_url($url, PHP_URL_SCHEME);
+		if (!in_array($scheme, ['http', 'https'], true)) {
+			return '';
+		}
+
+		$ch = curl_init($url);
+		if ($ch === false) {
+			return '';
+		}
+
+		curl_setopt_array($ch, [
+			CURLOPT_RETURNTRANSFER => true,
+			CURLOPT_FOLLOWLOCATION => true,
+			CURLOPT_MAXREDIRS => 5,
+			CURLOPT_TIMEOUT => 15,
+			CURLOPT_CONNECTTIMEOUT => 5,
+			CURLOPT_USERAGENT => 'FreshRSS/AiSummary',
+			CURLOPT_HTTPHEADER => ['Accept: text/html'],
+		]);
+
+		$html = curl_exec($ch);
+		$httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+		unset($ch);
+
+		if (!is_string($html) || $httpCode >= 400 || $html === '') {
+			return '';
+		}
+
+		return $this->extractReadableText($html);
+	}
+
+	private function extractReadableText(string $html): string {
+		// Remove script, style, nav, header, footer, aside tags and their content
+		$html = (string) preg_replace(
+			'#<\s*(script|style|nav|header|footer|aside|noscript)\b[^>]*>.*?</\s*\1\s*>#is',
+			'',
+			$html,
+		);
+
+		// Try to find <article> or <main> content first
+		if (preg_match('#<\s*article\b[^>]*>(.*?)</\s*article\s*>#is', $html, $matches)) {
+			$html = $matches[1];
+		} elseif (preg_match('#<\s*main\b[^>]*>(.*?)</\s*main\s*>#is', $html, $matches)) {
+			$html = $matches[1];
+		} elseif (preg_match('#<\s*div\b[^>]*(?:class|id)\s*=\s*["\'][^"\']*(?:content|article|post|entry|body)[^"\']*["\'][^>]*>(.*?)</\s*div\s*>#is', $html, $matches)) {
+			$html = $matches[1];
+		}
+
+		return $this->extractText($html);
+	}
+
+	/**
+	 * @param array<string, mixed> $payload
+	 * @param list<string> $headers
+	 */
+	private function curlStreamRequest(string $url, array $payload, array $headers, callable $lineHandler): void {
+		$ch = curl_init($url);
+		if ($ch === false) {
+			throw new \RuntimeException('Failed to initialize cURL');
+		}
+
+		$buffer = '';
+		$rawResponse = '';
+		$error = null;
+
+		curl_setopt_array($ch, [
+			CURLOPT_POST => true,
+			CURLOPT_POSTFIELDS => json_encode($payload, JSON_THROW_ON_ERROR),
+			CURLOPT_HTTPHEADER => $headers,
+			CURLOPT_RETURNTRANSFER => false,
+			CURLOPT_TIMEOUT => $this->requestTimeout,
+			CURLOPT_CONNECTTIMEOUT => self::CONNECT_TIMEOUT,
+			CURLOPT_WRITEFUNCTION => function ($ch, string $data) use (&$buffer, &$rawResponse, $lineHandler, &$error): int {
+				if (strlen($rawResponse) < 4096) {
+					$rawResponse .= $data;
+				}
+				$buffer .= $data;
+				while (($pos = strpos($buffer, "\n")) !== false) {
+					$line = trim(substr($buffer, 0, $pos));
+					$buffer = substr($buffer, $pos + 1);
+					if ($line !== '') {
+						try {
+							$lineHandler($line);
+						} catch (\Exception $e) {
+							$error = $e;
+							return 0;
+						}
+					}
+				}
+				return strlen($data);
+			},
+		]);
+
+		curl_exec($ch);
+		$httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+		$curlError = curl_error($ch);
+		unset($ch);
+
+		if ($error !== null) {
+			throw $error;
+		}
+
+		$remaining = trim($buffer);
+		if ($remaining !== '') {
+			$lineHandler($remaining);
+		}
+
+		if ($httpCode === 0 && $curlError !== '') {
+			throw new \RuntimeException('HTTP request failed: ' . $curlError);
+		}
+
+		if ($httpCode >= 400) {
+			$errorData = json_decode($rawResponse, true);
+			if (is_array($errorData)) {
+				/** @var mixed */
+				$errorObj = $errorData['error'] ?? null;
+				if (is_array($errorObj)) {
+					$msg = $errorObj['message'] ?? $errorObj;
+				} else {
+					$msg = $errorObj ?? 'HTTP ' . $httpCode;
+				}
+				throw new \RuntimeException('API error: ' . (is_string($msg) ? $msg : (string) json_encode($msg)));
+			}
+			throw new \RuntimeException('API error: HTTP ' . $httpCode);
+		}
+	}
+
+	/**
+	 * @param array<string, mixed> $data
+	 */
+	private function sendJson(array $data, int $httpCode = 200): void {
+		http_response_code($httpCode);
+		echo json_encode($data, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+	}
+
+	private function sendJsonError(string $message, int $httpCode): void {
+		$this->sendJson(['error' => $message], $httpCode);
+	}
+}

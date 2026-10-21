@@ -60,6 +60,37 @@ spec:
             mountPath: /var/www/FreshRSS/data
           - name: extensions
             mountPath: /var/www/FreshRSS/extensions
+          # AI Summary extension from the freshrss-ext-aisummary ConfigMap, one
+          # file per subPath. A whole-ConfigMap mount puts symlinks in the path,
+          # and p/ext.php then refuses to serve the extension's static/ files.
+          - name: ext-aisummary
+            mountPath: /var/www/FreshRSS/extensions/xExtension-AiSummary/extension.php
+            subPath: extension.php
+            readOnly: true
+          - name: ext-aisummary
+            mountPath: /var/www/FreshRSS/extensions/xExtension-AiSummary/metadata.json
+            subPath: metadata.json
+            readOnly: true
+          - name: ext-aisummary
+            mountPath: /var/www/FreshRSS/extensions/xExtension-AiSummary/configure.phtml
+            subPath: configure.phtml
+            readOnly: true
+          - name: ext-aisummary
+            mountPath: /var/www/FreshRSS/extensions/xExtension-AiSummary/Controllers/AiSummaryController.php
+            subPath: AiSummaryController.php
+            readOnly: true
+          - name: ext-aisummary
+            mountPath: /var/www/FreshRSS/extensions/xExtension-AiSummary/static/script.js
+            subPath: script.js
+            readOnly: true
+          - name: ext-aisummary
+            mountPath: /var/www/FreshRSS/extensions/xExtension-AiSummary/static/style.css
+            subPath: style.css
+            readOnly: true
+          - name: ext-aisummary
+            mountPath: /var/www/FreshRSS/extensions/xExtension-AiSummary/i18n/en/ext.php
+            subPath: i18n-en-ext.php
+            readOnly: true
       volumes:
         - name: data
           persistentVolumeClaim:
@@ -67,3 +98,6 @@ spec:
         - name: extensions
           persistentVolumeClaim:
             claimName: freshrss-extensions-pvc
+        - name: ext-aisummary
+          configMap:
+            name: freshrss-ext-aisummary
