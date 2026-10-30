@@ -32,6 +32,9 @@ spec:
         runAsGroup: 1000
         runAsNonRoot: true
         fsGroup: 1000
+        # Fix ownership on the first start only. Otherwise every restart
+        # walks the whole PVC and gives the group write on every file.
+        fsGroupChangePolicy: OnRootMismatch
         seccompProfile:
           type: RuntimeDefault
       containers:
