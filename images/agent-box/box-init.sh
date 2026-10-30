@@ -16,6 +16,9 @@ for f in .bashrc .profile; do
 done
 [ -f ~/.ssh/host/ssh_host_ed25519_key ] \
   || ssh-keygen -q -t ed25519 -N '' -f ~/.ssh/host/ssh_host_ed25519_key
+# fsGroup can give the group write access to files on the PVC, and sshd
+# refuses to start with a host key that is not private.
+chmod 600 ~/.ssh/host/ssh_host_ed25519_key
 
 # SSH sessions start with an empty environment. Hand them the pod's env
 # through PermitUserEnvironment. The file sits in a memory-backed emptyDir,
