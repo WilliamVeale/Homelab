@@ -47,6 +47,9 @@ spec:
                 name: box-secrets
             - secretRef:
                 name: claude-token
+            # VIKUNJA_URL and VIKUNJA_TOKEN for the /kanban skill.
+            - secretRef:
+                name: vikunja-token
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:

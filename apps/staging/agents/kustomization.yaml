@@ -6,5 +6,6 @@ resources:
   - networkpolicy.yaml
   - authorized-keys.yaml
   - claude-token-secret.yaml
+  - vikunja-token-secret.yaml
   # Boxes. scripts/new-box.sh appends to this list.
   - vikunja

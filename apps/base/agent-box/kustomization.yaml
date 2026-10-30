@@ -6,4 +6,4 @@ resources:
 images:
   # Set by hand to the short SHA the agent-box-image workflow pushed.
   - name: ghcr.io/williamveale/agent-box
-    newTag: b8c529a
+    newTag: 84b4462

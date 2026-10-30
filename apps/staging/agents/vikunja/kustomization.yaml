@@ -14,6 +14,7 @@ configMapGenerator:
       - BOX_NAME=vikunja
       - BOX_REPO=WilliamVeale/vikunja
       - MEMORY_REPO=WilliamVeale/claude-memory
+      - KANBAN_REPO=WilliamVeale/vikunja
       - GIT_USER_NAME=William Veale
       - GIT_USER_EMAIL=williambveale@gmail.com
 patches:
