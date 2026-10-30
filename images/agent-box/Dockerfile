@@ -1,11 +1,13 @@
-# Agent box: one per project. Claude Code agents run here under herdr, and the
-# laptop reaches the box over SSH through the Tailscale operator.
+# Agent box: one per project. Claude Code agents run here, and the laptop
+# reaches the box over SSH through the Tailscale operator. The Herdr desktop
+# app installs and updates its own server (herdr-core, ~/.local/bin on the
+# PVC) over SSH, so the image does not need to ship it.
 # Manifests: apps/base/agent-box. Built by .github/workflows/agent-box-image.yml.
 FROM node:22-bookworm-slim
 
-# Keep HERDR_VERSION equal to the laptop's herdr; client and server talk to
-# each other. Claude Code cannot self-update as a non-root user, so bump
-# CLAUDE_CODE_VERSION here instead.
+# HERDR_VERSION is the separate herdr CLI, kept only for terminal use inside
+# the box; the Herdr app does not use it. Claude Code cannot self-update as a
+# non-root user, so bump CLAUDE_CODE_VERSION here instead.
 ARG CLAUDE_CODE_VERSION=2.1.314
 ARG HERDR_VERSION=v0.9.5
 

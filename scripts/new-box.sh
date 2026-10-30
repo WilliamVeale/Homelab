@@ -7,7 +7,7 @@
 # and WilliamVeale/claude-memory: Contents and Pull requests read/write.
 # The script asks for it at a hidden prompt, writes apps/staging/agents/<name>/,
 # and offers to commit and push. Flux builds the box in a minute or two.
-# Then on the laptop: herdr machine add ws-<name>
+# Then add ws-<name> in the Herdr app, or run: hc machine add ws-<name>
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 [ $# -ge 2 ] || { sed -n 2,11p "$0"; exit 1; }
@@ -71,4 +71,4 @@ if [ "$ok" = y ]; then
 else
   echo "Not committed. Review with: git status"
 fi
-echo "Then on the laptop: herdr machine add ws-$name"
+echo "Then add ws-$name in the Herdr app, or run: hc machine add ws-$name"
