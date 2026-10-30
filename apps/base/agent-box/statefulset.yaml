@@ -1,0 +1,89 @@
+# One agent box. Each box overlay in apps/staging/agents/<name> adds a name
+# suffix, its own box-config and box-secrets, and its Tailscale hostname.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: agent-box
+  labels:
+    app.kubernetes.io/name: agent-box
+spec:
+  serviceName: agent-box
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: agent-box
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: agent-box
+    spec:
+      # No Kubernetes API access from inside a box, and no service env vars.
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      nodeSelector:
+        homelab/role: agents
+      tolerations:
+        - key: dedicated
+          operator: Equal
+          value: agents
+          effect: NoSchedule
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: box
+          image: ghcr.io/williamveale/agent-box
+          ports:
+            - name: ssh
+              containerPort: 2222
+          envFrom:
+            - configMapRef:
+                name: box-config
+            - secretRef:
+                name: box-secrets
+            - secretRef:
+                name: claude-token
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: "4"
+              memory: 6Gi
+          readinessProbe:
+            tcpSocket:
+              port: ssh
+            periodSeconds: 10
+          volumeMounts:
+            - name: home
+              mountPath: /home/agent
+            - name: run
+              mountPath: /run/agent-box
+            - name: authorized-keys
+              mountPath: /etc/agent-box
+              readOnly: true
+      volumes:
+        - name: run
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Mi
+        - name: authorized-keys
+          configMap:
+            name: agent-box-authorized-keys
+  volumeClaimTemplates:
+    - metadata:
+        name: home
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 50Gi

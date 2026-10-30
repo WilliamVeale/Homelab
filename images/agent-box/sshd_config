@@ -1,0 +1,30 @@
+# sshd runs as the unprivileged agent user (uid 1000), so that is the only
+# account anyone can log in as. The laptop reaches port 2222 through the
+# Tailscale operator's proxy; the NetworkPolicy admits nothing else.
+Port 2222
+HostKey /home/agent/.ssh/host/ssh_host_ed25519_key
+PidFile /run/agent-box/sshd.pid
+
+# Keys come from the read-only ConfigMap agent-box-authorized-keys, so an
+# agent inside the box cannot add a key of its own. StrictModes is off
+# because the ConfigMap mount is a chain of kubelet symlinks; in a
+# single-user container it guards nothing.
+AuthorizedKeysFile /etc/agent-box/authorized_keys
+StrictModes no
+AllowUsers agent
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin no
+UsePAM no
+
+# box-init writes the pod's env (tokens included) to ~/.ssh/environment,
+# because SSH sessions otherwise start with an empty environment.
+PermitUserEnvironment yes
+
+# Refuse ssh-agent forwarding even if a client asks for it: a box must
+# never be able to use the laptop's keys.
+AllowAgentForwarding no
+X11Forwarding no
+AllowTcpForwarding local
+PrintMotd no
+Subsystem sftp internal-sftp
