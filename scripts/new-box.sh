@@ -3,17 +3,19 @@
 #
 #   scripts/new-box.sh <name> <owner/repo> [git-email]
 #
-# Before running, make a fine-grained GitHub token with access to <owner/repo>
-# and WilliamVeale/claude-memory: Contents and Pull requests read/write.
+# Before running, make a fine-grained GitHub token with access to <owner/repo>,
+# WilliamVeale/claude-memory and WilliamVeale/vikunja (for /kanban): Contents
+# and Pull requests read/write.
 # The script asks for it at a hidden prompt, writes apps/staging/agents/<name>/,
 # and offers to commit and push. Flux builds the box in a minute or two.
 # Then add ws-<name> in the Herdr app, or run: hc machine add ws-<name>
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
-[ $# -ge 2 ] || { sed -n 2,11p "$0"; exit 1; }
+[ $# -ge 2 ] || { sed -n 2,12p "$0"; exit 1; }
 name=$1 repo=$2
 email=${3:-$(git config --global user.email)}
 memory_repo=WilliamVeale/claude-memory
+kanban_repo=WilliamVeale/vikunja
 dir=apps/staging/agents/$name
 list=apps/staging/agents/kustomization.yaml
 
@@ -44,6 +46,7 @@ configMapGenerator:
       - BOX_NAME=$name
       - BOX_REPO=$repo
       - MEMORY_REPO=$memory_repo
+      - KANBAN_REPO=$kanban_repo
       - GIT_USER_NAME=$(git config --global user.name)
       - GIT_USER_EMAIL=$email
 patches:
@@ -55,7 +58,7 @@ patches:
         value: ws-$name
 EOF
 
-echo "Paste the GitHub token for $repo + $memory_repo."
+echo "Paste the GitHub token for $repo + $memory_repo + $kanban_repo."
 scripts/seal-secret.sh "$dir/box-secrets.yaml" box-secrets - GH_TOKEN
 
 echo "  - $name" >> "$list"

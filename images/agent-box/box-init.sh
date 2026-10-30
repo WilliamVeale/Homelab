@@ -39,6 +39,17 @@ if [ ! -d "$repo_dir/.git" ]; then
     || log "could not clone $BOX_REPO; check GH_TOKEN can read it"
 fi
 
+# The kanban skill lives only in its own repo. bin/link (below) points
+# ~/.claude/skills/kanban at this clone. VIKUNJA_URL and VIKUNJA_TOKEN come
+# from the vikunja-token Secret.
+if [ -n "${KANBAN_REPO:-}" ]; then
+  kanban_dir=~/projects/${KANBAN_REPO#*/}
+  if [ ! -d "$kanban_dir/.git" ]; then
+    git clone -q "https://github.com/$KANBAN_REPO.git" "$kanban_dir" \
+      || log "could not clone $KANBAN_REPO; /kanban will be missing"
+  fi
+fi
+
 # Claude memory lives in a shared private repo, one folder per project, so
 # the laptop and the box see the same notes. bin/sync runs from the hooks.
 if [ -n "${MEMORY_REPO:-}" ]; then
@@ -46,8 +57,8 @@ if [ -n "${MEMORY_REPO:-}" ]; then
     git clone -q "https://github.com/$MEMORY_REPO.git" ~/claude-memory \
       || log "could not clone $MEMORY_REPO; check GH_TOKEN can read it"
   fi
-  [ -f ~/claude-memory/global/CLAUDE.md ] \
-    && ln -sfn ~/claude-memory/global/CLAUDE.md ~/.claude/CLAUDE.md
+  # Symlink the shared CLAUDE.md, skills and agents into ~/.claude.
+  [ -x ~/claude-memory/bin/link ] && ~/claude-memory/bin/link
   if [ ! -f ~/.claude/settings.json ]; then
     cat > ~/.claude/settings.json <<EOF
 {
