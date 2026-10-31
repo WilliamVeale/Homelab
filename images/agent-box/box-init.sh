@@ -73,7 +73,8 @@ while read -r _ _ remote_ref _; do
   branch=${remote_ref#refs/heads/}
   case $branch in
     main | master | "$default")
-      echo "pre-push: refusing to push to $branch, the default branch." >&2
+      echo "pre-push: refusing to push to $branch. Boxes never push to main," >&2
+      echo "pre-push: master or the default branch${default:+ ($default)}." >&2
       echo "pre-push: push a branch and open a PR: gh pr create" >&2
       status=1
       ;;
