@@ -1,7 +1,9 @@
 # Agent boxes v2: one-way trust
 
-Status: **phase 1 built 2026-10-31** (section 7 steps 1, 3 and 4; the old
-PVC still needs deleting by hand). Steps 5 to 8 are next. Nothing in this
+Status: **built and verified 2026-10-31.** Box `ws-vikunja` runs image
+`b35855e`. All 11 acceptance tests in section 9 pass; the GitHub-ruleset
+half of T4 waits for the first work-org box (personal repos on GitHub Free
+have no rulesets). Results and lessons are in section 9. Nothing in this
 file is secret; the repo is public.
 
 ## 1. Why v2
@@ -144,7 +146,8 @@ above (guarded: run `bin/pull` only if it exists). No SessionEnd hook. No
 `autoMemoryDirectory`. If managed settings turn out not to apply in the
 installed Claude Code version, fall back to box-init rewriting
 `~/.claude/settings.json` on every pod start with the same content, and say so
-in the runbook.
+in the runbook. Verified 2026-10-31 on Claude Code 2.1.314: managed settings apply
+(T7), so no fallback is built.
 
 **Rules the box reads.** `claude-memory` gains `global/CLAUDE.box.md` with
 box-only rules: work on a branch; open a PR with `gh pr create`; never push
@@ -301,14 +304,44 @@ Run from the laptop with `ssh ws-vikunja` or
 | T1 | I1 | in box: push a throwaway branch `v2-test` to the box repo, then delete it | both succeed |
 | T2 | I2 | in box: `git -C ~/claude-memory push origin HEAD:refs/heads/v2-test`; `gh api -X PUT repos/WilliamVeale/claude-memory/contents/x`; same against `WilliamVeale/Homelab` | all rejected (403 or "not permitted") |
 | T3 | I3 | laptop: `python3 -c 'import json;print(json.load(open("/Users/williamveale/.claude/settings.json")).get("hooks"))'`; `grep autoMemoryDirectory ~/projects/vikunja/.claude/settings.local.json` | `None`; no match. `~/.claude/CLAUDE.md` is still a symlink |
-| T4 | I4 | in box: `git push origin HEAD:main` on the box repo (then on a work-org box repo once one exists) | pre-push guard rejects locally; GitHub ruleset rejects on the org repo |
+| T4 | I4 | in box: make a throwaway commit, then `git push origin HEAD:main` on the box repo (then on a work-org box repo once one exists) | pre-push guard rejects locally; GitHub ruleset rejects on the org repo |
 | T5 | I5 | in box SSH session: `env \| grep -i token`; `grep -i token ~/.gitconfig` | only `CLAUDE_CODE_OAUTH_TOKEN`, `GH_TOKEN`, `SHARED_RO_TOKEN`, `VIKUNJA_TOKEN`; no token strings in gitconfig |
 | T6 | 6.2 | in box: `python3 ~/.claude/skills/kanban/vikunja.py check`; on laptop the same | both list boards, each with its own token |
-| T7 | 6.3 | in box: save a note with Claude Code, then `ls ~/.claude/projects/-home-agent-projects-vikunja/memory/`; `grep -r autoMemoryDirectory ~/.claude/ /etc/claude-code/` | note is on the PVC; no match |
+| T7 | 6.3 | in box: put a junk file in `~/claude-memory` and run `claude -p "reply with ok"`; save a note with Claude Code, then `ls ~/.claude/projects/-home-agent-projects-vikunja/memory/`; `grep -r autoMemoryDirectory ~/.claude/ /etc/claude-code/` | junk file gone and `claude -p` logged in; note is on the PVC; no match |
 | T8 | 6.3 | laptop: add a comment line to a skill, commit, push; in box run `~/claude-memory/bin/pull` | the line is present in the box |
 | T9 | 6.3 | in box: edit a file in `~/claude-memory`, run `bin/pull` | the edit is gone |
 | T10 | I6 | `shellcheck` on scripts; `kubectl kustomize apps/staging/agents`; kubeconform | all pass; pod admitted under PSA `restricted` |
-| T11 | unchanged | in box: curl `https://api.anthropic.com`, `https://github.com`; `nc -z 192.168.0.90 6443`; `nc -z 100.64.255.25 22` | first two reach; last two blocked |
+| T11 | unchanged | in box: curl `https://api.anthropic.com`, `https://github.com`; `timeout 6 bash -c '</dev/tcp/192.168.0.90/6443'`; the same for `100.64.255.25 22` (the image has no `nc`) | first two reach; last two blocked |
+
+### Results, 2026-10-31 (box `ws-vikunja`, images `ea63f5b` then `b35855e`)
+
+| # | Result | Key output |
+|---|---|---|
+| T1 | pass | `* [new branch] HEAD -> v2-test`, then `- [deleted] v2-test` |
+| T2 | pass | claude-memory push: `Write access to repository not granted` (403). Contents API: 404 with `GH_TOKEN`, 403 with `SHARED_RO_TOKEN`, on both repos. Homelab push: no helper, and 403 with either token forced by hand. `SHARED_RO_TOKEN` cannot write `vikunja` either |
+| T3 | pass | `None`; no match; `~/.claude/CLAUDE.md` is a symlink |
+| T4 | pass (local half) | `pre-push: refusing to push to main`; remote `main` unchanged. Ruleset half waits for a work-org box |
+| T5 | pass | only `CLAUDE_CODE_OAUTH_TOKEN`, `GH_TOKEN`, `SHARED_RO_TOKEN`, `VIKUNJA_TOKEN`; no token value in `~/.gitconfig` |
+| T6 | pass | `"ok": true` in the box and on the laptop; the two tokens differ |
+| T7 | pass | junk file gone after `claude -p`; stream-json shows `SessionStart:startup` `exit_code 0`; note in `~/.claude/projects/-home-agent-projects-vikunja/memory/` on the PVC; no `autoMemoryDirectory` |
+| T8 | pass | box `bin/pull`: `47b75d3` -> `1d01eac`; the new line is in `~/.claude/skills/bro/SKILL.md` |
+| T9 | pass | edit and a new skill folder gone; its link removed |
+| T10 | pass | shellcheck clean; kustomize and kubeconform pass; pod Running under `enforce: restricted`; server dry-run gives no Pod Security warning |
+| T11 | pass | anthropic HTTP 404 (reached), github HTTP 200; `192.168.0.90:6443`, `100.64.255.25:22`, `10.43.0.1:443`, `192.168.0.91:10250` blocked |
+
+Lessons:
+
+- `claude doctor` does not list a file-based `managed-settings.json`. To
+  prove the managed hook runs, use
+  `claude -p "reply with ok" --output-format stream-json --verbose` and look
+  for a `hook_response` event named `SessionStart:startup`, or use the junk
+  file check in T7.
+- Git skips the pre-push hook when a push has nothing to send, so testing
+  the guard needs a new commit first.
+- Test T2 also with each token forced by hand, not only through the
+  credential helpers: a box agent can do the same.
+- The guard first said "master, the default branch" even when it was not.
+  Fixed in `b35855e`.
 
 ## 10. Known limits, accepted
 
@@ -320,6 +353,13 @@ Run from the laptop with `ssh ws-vikunja` or
   what its project needs.
 - On personal private repos GitHub cannot enforce PR-only. The rule and the
   pre-push guard can be bypassed by a determined agent.
+- A box token acts as the user. So a box can merge its own PR with
+  `gh pr merge`, and no ruleset stops that: a ruleset cannot tell the box
+  from the user, and requiring an approval would block the user too
+  (GitHub does not let you approve your own PR). `CLAUDE.box.md` says never
+  merge. A machine user or a GitHub App for boxes closes this later.
+- The pre-push guard is skipped by `--no-verify`, and by a repo that sets
+  its own `core.hooksPath` (husky and similar tools do).
 
 ## 11. Rules for the implementing agent
 
