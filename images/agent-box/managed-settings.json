@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -x \"$HOME/claude-memory/bin/pull\" ]; then \"$HOME/claude-memory/bin/pull\"; fi; exit 0",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}

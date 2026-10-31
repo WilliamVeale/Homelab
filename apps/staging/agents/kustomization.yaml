@@ -7,4 +7,9 @@ resources:
   - authorized-keys.yaml
   - claude-token-secret.yaml
   - vikunja-token-secret.yaml
+  - shared-config.yaml
+  # SHARED_RO_TOKEN: read-only token for the shared repos. Uncomment once
+  # scripts/seal-secret.sh has written the file; an entry for a missing file
+  # breaks the whole apps Kustomization. No box can start without it.
+  # - shared-ro-token-secret.yaml
   # Boxes. scripts/new-box.sh appends to this list.

@@ -1,5 +1,7 @@
 # One agent box. Each box overlay in apps/staging/agents/<name> adds a name
-# suffix, its own box-config and box-secrets, and its Tailscale hostname.
+# suffix, its own box-config and box-secrets (GH_TOKEN for its repo only),
+# and its Tailscale hostname. The ConfigMap and Secrets that every box shares
+# live in apps/staging/agents and must exist before a box starts.
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -53,6 +55,12 @@ spec:
             # VIKUNJA_URL and VIKUNJA_TOKEN for the /kanban skill.
             - secretRef:
                 name: vikunja-token
+            # SHARED_REPO and KANBAN_REPO, the repos every box reads.
+            - configMapRef:
+                name: agent-box-shared
+            # SHARED_RO_TOKEN: Contents read on the shared repos, nothing more.
+            - secretRef:
+                name: shared-ro-token
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
