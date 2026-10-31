@@ -13,3 +13,4 @@ resources:
   # breaks the whole apps Kustomization. No box can start without it.
   - shared-ro-token-secret.yaml
   # Boxes. scripts/new-box.sh appends to this list.
+  - vikunja
