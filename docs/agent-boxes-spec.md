@@ -311,7 +311,7 @@ Run from the laptop with `ssh ws-vikunja` or
 | T8 | 6.3 | laptop: add a comment line to a skill, commit, push; in box run `~/claude-memory/bin/pull` | the line is present in the box |
 | T9 | 6.3 | in box: edit a file in `~/claude-memory`, run `bin/pull` | the edit is gone |
 | T10 | I6 | `shellcheck` on scripts; `kubectl kustomize apps/staging/agents`; kubeconform | all pass; pod admitted under PSA `restricted` |
-| T11 | unchanged | in box: curl `https://api.anthropic.com`, `https://github.com`; `timeout 6 bash -c '</dev/tcp/192.168.0.90/6443'`; the same for `100.64.255.25 22` (the image has no `nc`) | first two reach; last two blocked |
+| T11 | unchanged | in box: curl `https://api.anthropic.com`, `https://github.com`; `timeout 6 bash -c '</dev/tcp/192.168.0.90/6443'`; the same for the box's own tailnet IP, port 22 (`tailscale status` on the laptop; the image has no `nc`); from k-control, the same tailnet probe | first two reach; the rest blocked |
 
 ### Results, 2026-10-31 (box `ws-vikunja`, images `ea63f5b` then `b35855e`)
 
@@ -327,7 +327,7 @@ Run from the laptop with `ssh ws-vikunja` or
 | T8 | pass | box `bin/pull`: `47b75d3` -> `1d01eac`; the new line is in `~/.claude/skills/bro/SKILL.md` |
 | T9 | pass | edit and a new skill folder gone; its link removed |
 | T10 | pass | shellcheck clean; kustomize and kubeconform pass; pod Running under `enforce: restricted`; server dry-run gives no Pod Security warning |
-| T11 | pass | anthropic HTTP 404 (reached), github HTTP 200; `192.168.0.90:6443`, `100.64.255.25:22`, `10.43.0.1:443`, `192.168.0.91:10250` blocked |
+| T11 | pass | anthropic HTTP 404 (reached), github HTTP 200; `192.168.0.90:6443`, `10.43.0.1:443`, `192.168.0.91:10250` and the tailnet (`100.64.255.25:22`, the box's own `100.67.211.49:22`) blocked; k-control to `ws-vikunja:22` blocked by the Tailscale ACL |
 
 Lessons:
 
