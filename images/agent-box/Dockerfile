@@ -8,6 +8,9 @@
 # (~/claude-memory) as a mirror. Claude Code settings come from
 # /etc/claude-code/managed-settings.json, which the agent user cannot edit:
 # only a SessionStart hook that refreshes that mirror.
+# terraform is for projects whose infra is code (CI applies it; a box only
+# writes and validates). postgresql-client is psql for the optional Postgres
+# sidecar (apps/base/agent-box/components/postgres-sidecar).
 # Manifests: apps/base/agent-box. Built by .github/workflows/agent-box-image.yml.
 FROM node:22-bookworm-slim
 
@@ -24,8 +27,12 @@ RUN apt-get update \
       -o /etc/apt/keyrings/githubcli-archive-keyring.gpg \
  && echo "deb [signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
       > /etc/apt/sources.list.d/github-cli.list \
+ && curl -fsSL https://apt.releases.hashicorp.com/gpg \
+      | gpg --dearmor -o /etc/apt/keyrings/hashicorp.gpg \
+ && echo "deb [signed-by=/etc/apt/keyrings/hashicorp.gpg] https://apt.releases.hashicorp.com bookworm main" \
+      > /etc/apt/sources.list.d/hashicorp.list \
  && apt-get update \
- && apt-get install -y --no-install-recommends gh \
+ && apt-get install -y --no-install-recommends gh postgresql-client terraform \
  && rm -rf /var/lib/apt/lists/* /etc/ssh/ssh_host_*
 
 RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} \

@@ -1,0 +1,72 @@
+# Kustomize component: a Postgres 17 sidecar for one agent box. The agent
+# reaches it on localhost:5432 as payload/payload, database payload. Data
+# lives on its own PVC, so it survives pod restarts and image rolls. Add it
+# to a box overlay with
+#   components:
+#     - ../../../base/agent-box/components/postgres-sidecar
+# (scripts/new-box.sh --postgres does this). Localhost traffic is outside
+# the NetworkPolicy, and nothing outside the pod can reach the port.
+# No readiness probe on purpose: a broken database must not take the SSH
+# Service endpoint, and the box, down with it.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+patches:
+  - target:
+      kind: StatefulSet
+      name: agent-box
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/-
+        value:
+          name: postgres
+          image: postgres:17
+          env:
+            - name: POSTGRES_USER
+              value: payload
+            - name: POSTGRES_PASSWORD
+              value: payload
+            - name: POSTGRES_DB
+              value: payload
+            # A subdirectory: the volume root is not ours, and initdb must
+            # own its directory. The image entrypoint makes it as our uid.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - name: postgres
+              containerPort: 5432
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+            # The unix socket directory; the image's own is not writable
+            # by a non-root uid.
+            - name: pgrun
+              mountPath: /var/run/postgresql
+      - op: add
+        path: /spec/template/spec/volumes/-
+        value:
+          name: pgrun
+          emptyDir:
+            medium: Memory
+            sizeLimit: 8Mi
+      - op: add
+        path: /spec/volumeClaimTemplates/-
+        value:
+          metadata:
+            name: pgdata
+          spec:
+            accessModes: ["ReadWriteOnce"]
+            storageClassName: local-path
+            resources:
+              requests:
+                storage: 5Gi

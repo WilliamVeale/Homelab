@@ -1,7 +1,10 @@
 #!/bin/bash
 # Add an agent box for one GitHub repo.
 #
-#   scripts/new-box.sh <name> <owner/repo> [git-email]
+#   scripts/new-box.sh [--postgres] <name> <owner/repo> [git-email]
+#
+# --postgres adds a Postgres 17 sidecar on localhost:5432 (payload/payload,
+# database payload) with its own PVC, and puts DATABASE_URL in the box env.
 #
 # Before running, make a fine-grained GitHub token. Resource owner: the
 # repo's owner (the org, for a work repo). Repository access: only
@@ -14,7 +17,9 @@
 # minute or two. Then add ws-<name> in the Herdr app, or run: hc machine add ws-<name>
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
-[ $# -ge 2 ] || { sed -n 2,14p "$0"; exit 1; }
+postgres=0
+if [ "${1:-}" = --postgres ]; then postgres=1; shift; fi
+[ $# -ge 2 ] || { sed -n 2,17p "$0"; exit 1; }
 name=$1 repo=$2
 email=${3:-$(git config --global user.email)}
 dir=apps/staging/agents/$name
@@ -37,6 +42,8 @@ fi
 
 mkdir -p "$dir"
 trap '[ -f "$dir/box-secrets.yaml" ] || rm -rf "$dir"' EXIT
+pg_env=
+[ $postgres = 0 ] || pg_env=$'\n      - DATABASE_URL=postgres://payload:payload@localhost:5432/payload'
 cat > "$dir/kustomization.yaml" <<EOF
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -54,7 +61,7 @@ configMapGenerator:
       - BOX_NAME=$name
       - BOX_REPO=$repo
       - GIT_USER_NAME=$(git config --global user.name)
-      - GIT_USER_EMAIL=$email
+      - GIT_USER_EMAIL=$email$pg_env
 patches:
   - target:
       kind: Service
@@ -63,6 +70,13 @@ patches:
         path: /metadata/annotations/tailscale.com~1hostname
         value: ws-$name
 EOF
+if [ $postgres = 1 ]; then
+  cat >> "$dir/kustomization.yaml" <<EOF
+# Postgres 17 sidecar on localhost:5432 (payload/payload, database payload).
+components:
+  - ../../../base/agent-box/components/postgres-sidecar
+EOF
+fi
 
 echo "Paste the fine-grained GitHub token for $repo only"
 echo "(Contents read/write, Pull requests read/write, Metadata read)."
