@@ -47,7 +47,8 @@ Security, Tailscale, image, CI) passed the review and stays.
 
 Each must stay true. Section 9 has a test for each.
 
-- **I1** A box's GitHub token can write only to that box's repo.
+- **I1** A box's GitHub token can write only to that box's repo and the
+  repos named in its `EXTRA_REPOS`.
 - **I2** No box token can write to `claude-memory`, `Homelab`, or any repo
   another box or the laptop runs code from.
 - **I3** The laptop never runs or auto-loads anything a box can write. No
@@ -127,9 +128,18 @@ secret under `apps/staging/`.
 `KANBAN_REPO` (the `vikunja` box), the box repo helper wins. No default helper,
 so other repos get no credentials. Tokens are read from the environment at
 run time and never written to `~/.gitconfig`. The `gh` CLI uses `GH_TOKEN`
-and so can reach only the box repo.
+and so can reach only the box repo and its `EXTRA_REPOS`.
 
-**Clones.** `~/projects/<box repo>` with `GH_TOKEN`. `~/claude-memory`
+**Extra repos.** `EXTRA_REPOS` in the box ConfigMap (space-separated
+`owner/repo`, set with `new-box.sh --extra`) names repos the box also works
+on, with the same `GH_TOKEN` and the same rules: branches and PRs only. Each
+gets a `GH_TOKEN` helper, and the per-box token must cover it. Use: an infra
+box that sometimes opens a PR on its app repo (`volumes-infra` and
+`volumes`). An extra repo keeps its own GitHub rules; `new-box.sh` warns when
+its default branch or `dev` is not PR-only or has bypass actors.
+
+**Clones.** `~/projects/<box repo>` and `~/projects/<each extra repo>` with
+`GH_TOKEN`, cloned once and then left alone. `~/claude-memory`
 read-only. `~/projects/vikunja` read-only when it is not the box repo; refresh
 it with `git pull --ff-only` at pod start.
 
@@ -166,7 +176,9 @@ On the laptop `bin/link` keeps the symlink to `global/CLAUDE.md` as today.
 **Pre-push guard.** box-init sets `core.hooksPath` to
 `~/.config/git/hooks` and installs a `pre-push` script that rejects any push
 whose remote ref is the remote's default branch (from
-`git symbolic-ref refs/remotes/<remote>/HEAD`), or `main` or `master`. It is a seatbelt, not a lock: GitHub rulesets are the lock where
+`git symbolic-ref refs/remotes/<remote>/HEAD`), or `main`, `master` or
+`dev` (in the Drupal app repos a push to `dev` builds and deploys the dev
+VM). It is a seatbelt, not a lock: GitHub rulesets are the lock where
 the plan allows them (section 6.7).
 
 **Memory.** Default location, `~/.claude/projects/<slug>/memory` on the PVC.
@@ -221,6 +233,9 @@ next session start.
   the user, who is an org admin, so an admin bypass would let the box through.)
   On HTTP 403 (personal private repo on GitHub Free) it prints: GitHub cannot
   enforce PR-only here; the box rule and the pre-push guard are the only gates.
+- `--extra <owner/repo>` (repeatable) adds `EXTRA_REPOS`. The script does not
+  touch an extra repo's rules; it warns when its default branch or `dev` is
+  not PR-only, or when a ruleset there has bypass actors.
 - Still validates with `kubectl kustomize apps/staging/agents`.
 
 ### 6.7 GitHub side (human steps)
@@ -301,10 +316,10 @@ Run from the laptop with `ssh ws-vikunja` or
 
 | # | Invariant | Test | Expect |
 |---|---|---|---|
-| T1 | I1 | in box: push a throwaway branch `v2-test` to the box repo, then delete it | both succeed |
+| T1 | I1 | in box: push a throwaway branch `v2-test` to the box repo, then delete it; the same on each `EXTRA_REPOS` repo | both succeed |
 | T2 | I2 | in box: `git -C ~/claude-memory push origin HEAD:refs/heads/v2-test`; `gh api -X PUT repos/WilliamVeale/claude-memory/contents/x`; same against `WilliamVeale/Homelab` | all rejected (403 or "not permitted") |
 | T3 | I3 | laptop: `python3 -c 'import json;print(json.load(open("/Users/williamveale/.claude/settings.json")).get("hooks"))'`; `grep autoMemoryDirectory ~/projects/vikunja/.claude/settings.local.json` | `None`; no match. `~/.claude/CLAUDE.md` is still a symlink |
-| T4 | I4 | in box: make a throwaway commit, then `git push origin HEAD:main` on the box repo (then on a work-org box repo once one exists) | pre-push guard rejects locally; GitHub ruleset rejects on the org repo |
+| T4 | I4 | in box: make a throwaway commit, then `git push origin HEAD:main` and `git push origin HEAD:dev` on the box repo and on each `EXTRA_REPOS` repo (then on a work-org box repo once one exists, also with `--no-verify` to reach the ruleset) | pre-push guard rejects locally; GitHub ruleset rejects on the org repo |
 | T5 | I5 | in box SSH session: `env \| grep -i token`; `grep -i token ~/.gitconfig` | only `CLAUDE_CODE_OAUTH_TOKEN`, `GH_TOKEN`, `SHARED_RO_TOKEN`, `VIKUNJA_TOKEN`; no token strings in gitconfig |
 | T6 | 6.2 | in box: `python3 ~/.claude/skills/kanban/vikunja.py check`; on laptop the same | both list boards, each with its own token |
 | T7 | 6.3 | in box: put a junk file in `~/claude-memory` and run `claude -p "reply with ok"`; save a note with Claude Code, then `ls ~/.claude/projects/-home-agent-projects-vikunja/memory/`; `grep -r autoMemoryDirectory ~/.claude/ /etc/claude-code/` | junk file gone and `claude -p` logged in; note is on the PVC; no match |

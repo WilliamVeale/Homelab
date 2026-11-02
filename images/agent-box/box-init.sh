@@ -5,7 +5,8 @@
 # way into the box to fix it.
 #
 # Trust flows one way (docs/agent-boxes-spec.md in the Homelab repo): the
-# box writes only its own repo, on branches, and only reads the shared repos.
+# box writes only its own repo (and any EXTRA_REPOS), on branches, and only
+# reads the shared repos.
 # Claude Code settings come from /etc/claude-code/managed-settings.json in
 # the image, so nothing here writes ~/.claude/settings.json.
 set -uo pipefail
@@ -54,12 +55,27 @@ helper() { # <owner/repo> <name of the env var that holds the token>
 }
 [ -n "${SHARED_REPO:-}" ] && helper "$SHARED_REPO" SHARED_RO_TOKEN
 [ -n "${KANBAN_REPO:-}" ] && helper "$KANBAN_REPO" SHARED_RO_TOKEN
+# EXTRA_REPOS: more repos (space-separated owner/repo) that this box works
+# on with the same GH_TOKEN, under the same branch-and-PR rules. For
+# example an infra box that sometimes opens a PR on its app repo. The token
+# must cover them too; new-box.sh --extra sets this.
+extra_repos=()
+read -ra _extra <<< "${EXTRA_REPOS:-}"
+for r in "${_extra[@]}"; do
+  if [[ $r =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+    extra_repos+=("$r")
+    helper "$r" GH_TOKEN
+  else
+    log "EXTRA_REPOS: skipped '$r'; not owner/repo"
+  fi
+done
 # Last, so it wins when the box repo is also KANBAN_REPO. gh uses GH_TOKEN
-# directly, so it too reaches only the box repo.
+# directly, so it too reaches only the box repo and EXTRA_REPOS.
 helper "$BOX_REPO" GH_TOKEN
 
 # Seatbelt, not a lock: refuse pushes to the remote's default branch (and to
-# main and master always). GitHub rulesets are the lock where the plan
+# main, master and dev always: in the Drupal app repos a push to dev builds
+# and deploys the dev VM). GitHub rulesets are the lock where the plan
 # allows them. Rewritten every start so an edit does not survive a restart.
 cat > ~/.config/git/hooks/pre-push <<'EOF'
 #!/bin/sh
@@ -72,9 +88,9 @@ status=0
 while read -r _ _ remote_ref _; do
   branch=${remote_ref#refs/heads/}
   case $branch in
-    main | master | "$default")
+    main | master | dev | "$default")
       echo "pre-push: refusing to push to $branch. Boxes never push to main," >&2
-      echo "pre-push: master or the default branch${default:+ ($default)}." >&2
+      echo "pre-push: master, dev or the default branch${default:+ ($default)}." >&2
       echo "pre-push: push a branch and open a PR: gh pr create" >&2
       status=1
       ;;
@@ -92,6 +108,19 @@ if [ ! -d "$repo_dir/.git" ]; then
   git clone -q "https://github.com/$BOX_REPO.git" "$repo_dir" \
     || log "could not clone $BOX_REPO; check GH_TOKEN can read it"
 fi
+# EXTRA_REPOS are working copies too: cloned once, then left alone.
+for r in "${extra_repos[@]}"; do
+  d=~/projects/${r#*/}
+  if [ -d "$d/.git" ]; then
+    [ "$(git -C "$d" remote get-url origin 2>/dev/null)" = "https://github.com/$r.git" ] \
+      || log "$d is not a clone of $r; left alone"
+  elif [ -e "$d" ]; then
+    log "$d exists and is not a git clone; $r not cloned"
+  else
+    git clone -q "https://github.com/$r.git" "$d" \
+      || log "could not clone $r; check GH_TOKEN can read it"
+  fi
+done
 
 # The kanban skill lives only in its own repo. bin/link (below) points
 # ~/.claude/skills/kanban at this clone. VIKUNJA_URL and VIKUNJA_TOKEN come
