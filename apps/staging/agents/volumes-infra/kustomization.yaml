@@ -15,6 +15,7 @@ configMapGenerator:
       - BOX_REPO=utkdigitalinitiatives/volumes-infra
       - GIT_USER_NAME=William Veale
       - GIT_USER_EMAIL=wveale@utk.edu
+      - EXTRA_REPOS=utkdigitalinitiatives/volumes
 patches:
   - target:
       kind: Service
