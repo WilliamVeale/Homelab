@@ -1,0 +1,21 @@
+# MCP servers every box gets. The base StatefulSet mounts this read-only at
+# /etc/agent-box-mcp, and box-init copies it into mcpServers (user scope) in
+# ~/.claude.json at every start. Git owns that list: a server taken out here
+# goes away from the boxes too. Same format as `claude mcp add-json`.
+# Never put a token in here; this repo is public. A server that needs one
+# reads it from a SOPS Secret as env.
+# A plain ConfigMap, not a generator, so its name has no hash and the base
+# can refer to it. Pods read it only at start: restart the boxes after a
+# change.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-box-mcp
+data:
+  mcp-servers.json: |
+    {
+      "context7": {
+        "type": "http",
+        "url": "https://mcp.context7.com/mcp"
+      }
+    }

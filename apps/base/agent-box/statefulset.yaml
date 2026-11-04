@@ -84,6 +84,10 @@ spec:
             - name: authorized-keys
               mountPath: /etc/agent-box
               readOnly: true
+            # The MCP servers every box gets (apps/staging/agents/mcp-servers.yaml).
+            - name: mcp-servers
+              mountPath: /etc/agent-box-mcp
+              readOnly: true
       volumes:
         - name: run
           emptyDir:
@@ -92,6 +96,11 @@ spec:
         - name: authorized-keys
           configMap:
             name: agent-box-authorized-keys
+        # Optional, so a box still starts (and sshd comes up) without it.
+        - name: mcp-servers
+          configMap:
+            name: agent-box-mcp
+            optional: true
   volumeClaimTemplates:
     - metadata:
         name: home
