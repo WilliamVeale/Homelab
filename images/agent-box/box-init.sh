@@ -166,5 +166,28 @@ fi
 # Skip the first-run theme and login screens; CLAUDE_CODE_OAUTH_TOKEN logs in.
 [ -f ~/.claude.json ] || echo '{"hasCompletedOnboarding": true}' > ~/.claude.json
 
+# MCP servers: git owns the user scope. The list is the agent-box-mcp
+# ConfigMap (apps/staging/agents/mcp-servers.yaml), mounted read-only.
+# Every start replaces mcpServers in ~/.claude.json with it, so a server
+# taken out of git goes away too. To try a server by hand, use plain
+# `claude mcp add` (local scope): this step leaves local scope alone.
+# Runs before sshd, so no Claude session can write the file at the same time.
+mcp_file=/etc/agent-box-mcp/mcp-servers.json
+if [ ! -f "$mcp_file" ]; then
+  log "no $mcp_file; MCP servers left as they are"
+elif ! jq -e 'type == "object"' "$mcp_file" > /dev/null 2>&1; then
+  log "$mcp_file is not a JSON object; MCP servers left as they are"
+else
+  tmp=""
+  if tmp=$(mktemp ~/.claude.json.XXXXXX) \
+    && jq --slurpfile s "$mcp_file" '.mcpServers = $s[0]' ~/.claude.json > "$tmp" \
+    && mv "$tmp" ~/.claude.json; then
+    log "MCP servers: $(jq -r 'keys | join(" ") | if . == "" then "none" else . end' "$mcp_file")"
+  else
+    [ -n "$tmp" ] && rm -f "$tmp"
+    log "could not write MCP servers into ~/.claude.json"
+  fi
+fi
+
 log "ready: $BOX_NAME ($BOX_REPO)"
 exec /usr/sbin/sshd -D -e -f /etc/ssh/agent-box/sshd_config
