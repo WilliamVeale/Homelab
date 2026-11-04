@@ -3,10 +3,19 @@
 # ~/.claude.json at every start. Git owns that list: a server taken out here
 # goes away from the boxes too. Same format as `claude mcp add-json`.
 # Never put a token in here; this repo is public. A server that needs one
-# reads it from a SOPS Secret as env.
+# names a box env var (from a SOPS Secret) as "${VAR}": Claude fills it in
+# when it starts the server, so the token never lands on the PVC.
+# Stdio programs come from the image (images/agent-box/Dockerfile).
 # A plain ConfigMap, not a generator, so its name has no hash and the base
 # can refer to it. Pods read it only at start: restart the boxes after a
 # change.
+#
+# - context7: remote endpoint, so no third-party code runs in the box.
+# - terraform: public registry tools only. The other toolsets need an HCP
+#   Terraform token, which boxes do not have.
+# - github: read-only, with the box's own GH_TOKEN, so it reaches only the
+#   box repo and its EXTRA_REPOS. Writes stay with git push (pre-push guard)
+#   and gh pr create: an MCP write tool would be a second path past the guard.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -17,5 +26,16 @@ data:
       "context7": {
         "type": "http",
         "url": "https://mcp.context7.com/mcp"
+      },
+      "terraform": {
+        "type": "stdio",
+        "command": "terraform-mcp-server",
+        "args": ["stdio", "--toolsets=registry"]
+      },
+      "github": {
+        "type": "stdio",
+        "command": "github-mcp-server",
+        "args": ["stdio", "--read-only"],
+        "env": {"GITHUB_PERSONAL_ACCESS_TOKEN": "${GH_TOKEN}"}
       }
     }
