@@ -12,3 +12,7 @@ data:
   # The /kanban skill, cloned read-only to ~/projects/vikunja unless it is
   # the box's own repo.
   KANBAN_REPO: WilliamVeale/vikunja
+  # Claude Code mods, loaded like `claude --plugin-dir`. They live in the
+  # shared repo above, so a mod edit reaches boxes at the next session start.
+  # Separate paths with ':'.
+  CLAUDE_CODE_PLUGIN_DIRS: /home/agent/claude-memory/global/mods/context-meter
