@@ -35,6 +35,28 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends gh postgresql-client terraform \
  && rm -rf /var/lib/apt/lists/* /etc/ssh/ssh_host_*
 
+# MCP server programs. apps/staging/agents/mcp-servers.yaml says which ones a
+# box runs. Each is pinned to a version and its SHA-256, so a changed file
+# upstream fails the build. HashiCorp's apt repo has no terraform-mcp-server.
+# x86_64 only, like the image (the workflow builds for its runner) and
+# k-node01. To bump: new version, and the linux amd64 / Linux_x86_64 line of
+# that release's SHA256SUMS / checksums.txt.
+ARG TERRAFORM_MCP_VERSION=1.4.1
+ARG TERRAFORM_MCP_SHA256=8b2526451162e16d803ab014f7070f0f412962cdffffdcf446e70a846362481b
+ARG GITHUB_MCP_VERSION=2.0.3
+ARG GITHUB_MCP_SHA256=f797c20fe02a755865d0e2d46184ab47e31bf1619b0855b8d89c531e45a651c2
+RUN cd /tmp \
+ && curl -fsSL -o tf.zip "https://releases.hashicorp.com/terraform-mcp-server/${TERRAFORM_MCP_VERSION}/terraform-mcp-server_${TERRAFORM_MCP_VERSION}_linux_amd64.zip" \
+ && echo "${TERRAFORM_MCP_SHA256}  tf.zip" | sha256sum -c - \
+ && unzip -q tf.zip terraform-mcp-server -d /usr/local/bin \
+ && curl -fsSL -o gh.tgz "https://github.com/github/github-mcp-server/releases/download/v${GITHUB_MCP_VERSION}/github-mcp-server_Linux_x86_64.tar.gz" \
+ && echo "${GITHUB_MCP_SHA256}  gh.tgz" | sha256sum -c - \
+ && tar -xzf gh.tgz --no-same-owner -C /usr/local/bin github-mcp-server \
+ && chmod 0755 /usr/local/bin/terraform-mcp-server /usr/local/bin/github-mcp-server \
+ && rm tf.zip gh.tgz \
+ && terraform-mcp-server --version \
+ && github-mcp-server --help > /dev/null
+
 RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} \
  && npm cache clean --force
 
