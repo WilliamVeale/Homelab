@@ -7,4 +7,4 @@ images:
   # The short SHA of an image the agent-box-image workflow pushed. Its
   # weekly Claude Code update sets it; otherwise set it by hand.
   - name: ghcr.io/williamveale/agent-box
-    newTag: 5aecdc6
+    newTag: 8a5e3f9
