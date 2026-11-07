@@ -6,3 +6,4 @@ metadata:
 data:
   authorized_keys: |
     ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAII7ohC6e+J6FArMmNvD1ssOJGEo8SySSBsb4qIUaraam work-laptop
+    ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGa0xKzL4WZWV12J3g+4Ofa+TnBUHCmHM3z7x8B+PWZC iphone-moshi
