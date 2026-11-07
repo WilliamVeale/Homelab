@@ -4,6 +4,7 @@ resources:
   - statefulset.yaml
   - service.yaml
 images:
-  # Set by hand to the short SHA the agent-box-image workflow pushed.
+  # The short SHA of an image the agent-box-image workflow pushed. Its
+  # weekly Claude Code update sets it; otherwise set it by hand.
   - name: ghcr.io/williamveale/agent-box
     newTag: 5aecdc6

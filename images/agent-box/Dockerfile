@@ -13,8 +13,9 @@
 # Manifests: apps/base/agent-box. Built by .github/workflows/agent-box-image.yml.
 FROM node:22-bookworm-slim
 
-# Claude Code cannot self-update as a non-root user, so bump
-# CLAUDE_CODE_VERSION here instead.
+# Claude Code cannot self-update as a non-root user. The weekly run of
+# .github/workflows/agent-box-image.yml bumps CLAUDE_CODE_VERSION to npm's
+# stable version and rolls the boxes. Keep this line's format: it seds it.
 ARG CLAUDE_CODE_VERSION=2.1.314
 
 RUN apt-get update \
