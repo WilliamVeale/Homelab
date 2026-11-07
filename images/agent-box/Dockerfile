@@ -68,6 +68,9 @@ RUN usermod -l agent -d /home/agent -m node \
 COPY sshd_config /etc/ssh/agent-box/sshd_config
 COPY box-init.sh /usr/local/bin/box-init
 COPY managed-settings.json /etc/claude-code/managed-settings.json
+# New interactive shells (a Herdr pane, ssh) start in the box repo.
+COPY bashrc /etc/agent-box-bashrc
+RUN echo '. /etc/agent-box-bashrc' >> /etc/bash.bashrc
 
 ENV DISABLE_AUTOUPDATER=1
 USER 1000:1000

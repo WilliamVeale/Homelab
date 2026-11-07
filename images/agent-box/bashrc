@@ -1,0 +1,8 @@
+# shellcheck shell=bash
+# Sourced at the end of /etc/bash.bashrc, so only interactive shells run it:
+# Debian's file returns early for the rest, and ssh commands and scripts are
+# not affected. A new Herdr pane is a plain bash in ~, where no project
+# CLAUDE.md loads. Start it in the box repo instead.
+if [ "$PWD" = "$HOME" ] && [ -n "${BOX_REPO:-}" ] && [ -d "$HOME/projects/${BOX_REPO#*/}" ]; then
+  cd "$HOME/projects/${BOX_REPO#*/}" || true
+fi
