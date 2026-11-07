@@ -1,10 +1,8 @@
 #!/bin/bash
 # Add an agent box for one GitHub repo.
 #
-#   scripts/new-box.sh [--postgres] [--extra <owner/repo>]... <name> <owner/repo> [git-email]
+#   scripts/new-box.sh [--extra <owner/repo>]... <name> <owner/repo> [git-email]
 #
-# --postgres adds a Postgres 17 sidecar on localhost:5432 (payload/payload,
-# database payload) with its own PVC, and puts DATABASE_URL in the box env.
 # --extra (repeatable) names another repo the box also works on with the
 # same token and the same rules: branches and PRs only. It is cloned into
 # ~/projects. The repo keeps its own GitHub rules; the script checks them.
@@ -22,10 +20,9 @@
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 repo_re='^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
-postgres=0 extra=
+extra=
 while [ $# -gt 0 ]; do
   case $1 in
-    --postgres) postgres=1; shift ;;
     --extra)
       [[ ${2:-} =~ $repo_re ]] || { echo "--extra needs owner/repo" >&2; exit 1; }
       extra=${extra:+$extra }$2; shift 2 ;;
@@ -33,7 +30,7 @@ while [ $# -gt 0 ]; do
     *) break ;;
   esac
 done
-[ $# -ge 2 ] || { sed -n 2,21p "$0"; exit 1; }
+[ $# -ge 2 ] || { sed -n 2,19p "$0"; exit 1; }
 name=$1 repo=$2
 email=${3:-$(git config --global user.email)}
 dir=apps/staging/agents/$name
@@ -59,7 +56,6 @@ fi
 mkdir -p "$dir"
 trap '[ -f "$dir/box-secrets.yaml" ] || rm -rf "$dir"' EXIT
 extra_env=
-[ $postgres = 0 ] || extra_env=$'\n      - DATABASE_URL=postgres://payload:payload@localhost:5432/payload'
 [ -z "$extra" ] || extra_env+=$'\n      - EXTRA_REPOS='$extra
 cat > "$dir/kustomization.yaml" <<EOF
 apiVersion: kustomize.config.k8s.io/v1beta1
@@ -87,13 +83,6 @@ patches:
         path: /metadata/annotations/tailscale.com~1hostname
         value: ws-$name
 EOF
-if [ $postgres = 1 ]; then
-  cat >> "$dir/kustomization.yaml" <<EOF
-# Postgres 17 sidecar on localhost:5432 (payload/payload, database payload).
-components:
-  - ../../../base/agent-box/components/postgres-sidecar
-EOF
-fi
 
 echo "Paste the fine-grained GitHub token for $repo${extra:+ and $extra} only"
 echo "(Contents read/write, Pull requests read/write, Metadata read)."

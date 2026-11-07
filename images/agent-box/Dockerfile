@@ -9,8 +9,7 @@
 # /etc/claude-code/managed-settings.json, which the agent user cannot edit:
 # only a SessionStart hook that refreshes that mirror.
 # terraform is for projects whose infra is code (CI applies it; a box only
-# writes and validates). postgresql-client is psql for the optional Postgres
-# sidecar (apps/base/agent-box/components/postgres-sidecar).
+# writes and validates).
 # Manifests: apps/base/agent-box. Built by .github/workflows/agent-box-image.yml.
 FROM node:22-bookworm-slim
 
@@ -32,7 +31,7 @@ RUN apt-get update \
  && echo "deb [signed-by=/etc/apt/keyrings/hashicorp.gpg] https://apt.releases.hashicorp.com bookworm main" \
       > /etc/apt/sources.list.d/hashicorp.list \
  && apt-get update \
- && apt-get install -y --no-install-recommends gh postgresql-client terraform \
+ && apt-get install -y --no-install-recommends gh terraform \
  && rm -rf /var/lib/apt/lists/* /etc/ssh/ssh_host_*
 
 # MCP server programs. apps/staging/agents/mcp-servers.yaml says which ones a
