@@ -91,6 +91,7 @@ Wrong:
 |---|---|---|---|
 | `WilliamVeale/claude-memory` (shared skills, rules) | laptop only, by hand | every box, read-only | `SHARED_RO_TOKEN` |
 | `WilliamVeale/vikunja` (kanban skill) | box `vikunja` via PR; user merges | every box, read-only, for `/kanban` | `SHARED_RO_TOKEN` (box `vikunja` uses its own `GH_TOKEN`) |
+| `WilliamVeale/notebook` (research, specs) | box `general` via PR; user merges | every box, read-only mirror (since 2026-11-08) | `SHARED_RO_TOKEN` (box `general` uses its own `GH_TOKEN`) |
 | each box repo | that box, branches only; user merges | that box | per-box `GH_TOKEN` |
 | `WilliamVeale/Homelab` | laptop only | no box | none |
 
@@ -99,8 +100,9 @@ Tokens are GitHub fine-grained personal access tokens.
 - Per-box `GH_TOKEN`: resource owner is the repo owner (the org for work
   repos). Repository access: only that repo. Permissions: Contents
   read/write, Pull requests read/write, Metadata read. Nothing else.
-- `SHARED_RO_TOKEN`: resource owner `WilliamVeale`. Repos: `claude-memory`
-  and `vikunja`. Permissions: Contents read, Metadata read.
+- `SHARED_RO_TOKEN`: resource owner `WilliamVeale`. Repos: `claude-memory`,
+  `vikunja` and `notebook` (added 2026-11-08). Permissions: Contents read,
+  Metadata read.
 
 ### 6.2 Secrets in namespace `agents`
 
@@ -124,8 +126,9 @@ secret under `apps/staging/`.
 **Git credentials, one helper per repo URL.** `credential.useHttpPath true`.
 `credential.https://github.com/$BOX_REPO.helper` returns `GH_TOKEN`.
 `credential.https://github.com/$SHARED_REPO.helper` and
-`...$KANBAN_REPO.helper` return `SHARED_RO_TOKEN`. When `BOX_REPO` equals
-`KANBAN_REPO` (the `vikunja` box), the box repo helper wins. No default helper,
+`...$KANBAN_REPO.helper` and `...$NOTEBOOK_REPO.helper` return
+`SHARED_RO_TOKEN`. When `BOX_REPO` equals `KANBAN_REPO` (the `vikunja` box)
+or `NOTEBOOK_REPO` (the `general` box), the box repo helper wins. No default helper,
 so other repos get no credentials. Tokens are read from the environment at
 run time and never written to `~/.gitconfig`. The `gh` CLI uses `GH_TOKEN`
 and so can reach only the box repo and its `EXTRA_REPOS`.
@@ -180,6 +183,22 @@ whose remote ref is the remote's default branch (from
 `dev` (in the Drupal app repos a push to `dev` builds and deploys the dev
 VM). It is a seatbelt, not a lock: GitHub rulesets are the lock where
 the plan allows them (section 6.7).
+
+**Notebook (added 2026-11-08).** `NOTEBOOK_REPO=WilliamVeale/notebook` in the
+`agent-box-shared` ConfigMap. Box `general` writes it by PR; every other box
+gets a read-only mirror at `~/projects/notebook`, so a spec written there can
+be built in the box it is for. `/usr/local/bin/notebook-pull`
+(`images/agent-box/notebook-pull`) clones it when it is missing and otherwise
+fetches and resets it to `origin/HEAD`, throwing local edits away. box-init
+runs it at pod start and a second SessionStart hook runs it at every session
+start (output to `/dev/null`), so a merged spec reaches a box without a
+restart. It skips the box whose own repo is `NOTEBOOK_REPO`. Nothing loads
+the repo into a session's context: it sits beside the box repo, not above it,
+so Claude Code never reads its `CLAUDE.md` at start, and it is never an
+`additionalDirectories` entry. `CLAUDE.box.md` (in `claude-memory`) names the
+folder in plain text, never as an `@` import, and says to read only the files
+a task needs. Accepted: the work box `volumes-infra` can read these personal
+notes too, so nothing goes in `notebook` that a work repo must not see.
 
 **Memory.** Default location, `~/.claude/projects/<slug>/memory` on the PVC.
 No sync. Loss of the PVC loses the notes; that is accepted until Velero exists.

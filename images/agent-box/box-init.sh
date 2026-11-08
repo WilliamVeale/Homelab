@@ -55,6 +55,7 @@ helper() { # <owner/repo> <name of the env var that holds the token>
 }
 [ -n "${SHARED_REPO:-}" ] && helper "$SHARED_REPO" SHARED_RO_TOKEN
 [ -n "${KANBAN_REPO:-}" ] && helper "$KANBAN_REPO" SHARED_RO_TOKEN
+[ -n "${NOTEBOOK_REPO:-}" ] && helper "$NOTEBOOK_REPO" SHARED_RO_TOKEN
 # EXTRA_REPOS: more repos (space-separated owner/repo) that this box works
 # on with the same GH_TOKEN, under the same branch-and-PR rules. For
 # example an infra box that sometimes opens a PR on its app repo. The token
@@ -138,6 +139,11 @@ if [ -n "${KANBAN_REPO:-}" ] && [ "$KANBAN_REPO" != "$BOX_REPO" ]; then
       || log "could not update $KANBAN_REPO; /kanban may be stale"
   fi
 fi
+
+# Research and specs from box general, a read-only mirror in
+# ~/projects. notebook-pull clones it and refreshes it; the SessionStart hook
+# runs it again at every session start. It skips the box that owns the repo.
+notebook-pull
 
 # Shared skills and global rules. ~/claude-memory is a read-only mirror:
 # local edits are thrown away on purpose. The SessionStart hook in the

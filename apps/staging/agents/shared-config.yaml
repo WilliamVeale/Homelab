@@ -12,6 +12,10 @@ data:
   # The /kanban skill, cloned read-only to ~/projects/vikunja unless it is
   # the box's own repo.
   KANBAN_REPO: WilliamVeale/vikunja
+  # Research and specs from box general, cloned read-only to
+  # ~/projects/notebook (images/agent-box/notebook-pull) unless it is the
+  # box's own repo. A clone only: nothing loads it into a session's context.
+  NOTEBOOK_REPO: WilliamVeale/notebook
   # Claude Code mods, loaded like `claude --plugin-dir`. They live in the
   # shared repo above, so a mod edit reaches boxes at the next session start.
   # Separate paths with ':'.

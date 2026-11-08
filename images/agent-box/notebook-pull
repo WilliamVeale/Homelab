@@ -1,0 +1,41 @@
+#!/bin/sh
+# Keeps ~/projects/<repo> a read-only mirror of NOTEBOOK_REPO: research and
+# specs that box general writes and the user merges. Clones it when it is
+# missing, then makes it match GitHub. box-init runs this at pod start; the
+# SessionStart hook in managed-settings.json runs it at every session start,
+# so a merged spec reaches the box without a restart.
+#
+# Local edits and new files are thrown away on purpose. Always exits 0, and
+# says nothing unless a step fails (then one line on stderr): a network
+# problem must never block a session. The hook sends all output to
+# /dev/null, because hook stdout goes into Claude's context.
+#
+# Does nothing in the box whose own repo is NOTEBOOK_REPO: there it is the
+# working copy, and box-init cloned it.
+set -u
+repo=${NOTEBOOK_REPO:-}
+[ -n "$repo" ] || exit 0
+[ "$repo" != "${BOX_REPO:-}" ] || exit 0
+case $repo in
+  */*) ;;
+  *) echo "notebook-pull: NOTEBOOK_REPO '$repo' is not owner/repo" >&2; exit 0 ;;
+esac
+dir=$HOME/projects/${repo#*/}
+url=https://github.com/$repo.git
+export GIT_TERMINAL_PROMPT=0
+
+# Under the 60 s hook timeout. A killed clone removes its own directory.
+if [ ! -e "$dir" ]; then
+  timeout 50 git clone -q "$url" "$dir" \
+    || echo "notebook-pull: could not clone $repo; check SHARED_RO_TOKEN can read it" >&2
+  exit 0
+fi
+if [ "$(git -C "$dir" remote get-url origin 2>/dev/null)" != "$url" ]; then
+  echo "notebook-pull: $dir is not a clone of $repo; left alone" >&2
+  exit 0
+fi
+{ timeout 30 git -C "$dir" fetch -q origin \
+    && git -C "$dir" reset -q --hard origin/HEAD \
+    && git -C "$dir" clean -q -fd; } \
+  || echo "notebook-pull: could not refresh $repo; using the copy on disk" >&2
+exit 0

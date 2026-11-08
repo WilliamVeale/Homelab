@@ -7,6 +7,11 @@
             "type": "command",
             "command": "if [ -x \"$HOME/claude-memory/bin/pull\" ]; then \"$HOME/claude-memory/bin/pull\"; fi; exit 0",
             "timeout": 60
+          },
+          {
+            "type": "command",
+            "command": "/usr/local/bin/notebook-pull >/dev/null 2>&1; exit 0",
+            "timeout": 60
           }
         ]
       }
