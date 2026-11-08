@@ -68,7 +68,7 @@ data:
   config.yaml: |
     # Name of the tunnel you want to run
     
-    tunnel: grafana
+    tunnel: grafana-v2
 
     credentials-file: /etc/cloudflared/creds/credentials.json
 
