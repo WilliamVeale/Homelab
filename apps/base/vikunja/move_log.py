@@ -21,7 +21,7 @@ records a fresh baseline and posts nothing.
 Stdlib only, so it runs on a stock python:alpine image from a ConfigMap.
 """
 
-import json, os, sys, urllib.error, urllib.request
+import json, os, sys, time, urllib.error, urllib.request
 from datetime import datetime, timedelta, timezone
 
 API = os.environ.get("VIKUNJA_API", "http://vikunja:3456/api/v1").rstrip("/")
@@ -40,20 +40,33 @@ FORGET_AFTER = timedelta(days=30)
 # history. Re-baseline silently instead and fail the run so it shows up.
 MAX_COMMENTS = 40
 
+# A new pod is refused for about a second: the NetworkPolicy controller has not
+# yet put the pod's IP on the allow list of vikunja-from-move-log. Keep trying
+# for this long. A refused connection sent nothing, so a retry cannot post a
+# comment twice; no other error is retried.
+CONNECT_WAIT = 30
+
 
 def api(method, path, body=None):
     req = urllib.request.Request(API + path, method=method,
                                  data=json.dumps(body).encode() if body is not None else None)
     req.add_header("Authorization", "Bearer " + TOKEN)
     req.add_header("Content-Type", "application/json")
-    try:
-        with urllib.request.urlopen(req, timeout=30) as r:
-            raw = r.read()
-            return json.loads(raw) if raw else None
-    except urllib.error.HTTPError as e:
-        detail = e.read()[:300].decode(errors="replace")
-        hint = " (401 code 11 = token lacks this scope, or it expired)" if e.code == 401 else ""
-        raise SystemExit("HTTP %s on %s %s%s: %s" % (e.code, method, path, hint, detail))
+    deadline = time.monotonic() + CONNECT_WAIT
+    while True:
+        try:
+            with urllib.request.urlopen(req, timeout=30) as r:
+                raw = r.read()
+                return json.loads(raw) if raw else None
+        except urllib.error.HTTPError as e:
+            detail = e.read()[:300].decode(errors="replace")
+            hint = " (401 code 11 = token lacks this scope, or it expired)" if e.code == 401 else ""
+            raise SystemExit("HTTP %s on %s %s%s: %s" % (e.code, method, path, hint, detail))
+        except urllib.error.URLError as e:
+            if not isinstance(e.reason, ConnectionRefusedError) or time.monotonic() >= deadline:
+                raise
+            print("connection refused on %s %s, trying again" % (method, path), file=sys.stderr)
+            time.sleep(1)
 
 
 def board_now():
