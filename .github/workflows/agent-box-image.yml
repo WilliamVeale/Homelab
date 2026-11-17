@@ -6,9 +6,10 @@
 #
 # A push builds the image only; set newTag by hand to roll the boxes.
 # The weekly run updates Claude Code and rolls the boxes by itself:
-#   update  pin CLAUDE_CODE_VERSION to npm's "stable" Claude Code (about a
-#           week behind "latest"; it skips releases with bad regressions),
-#           only if that is newer than the pin, and push it to master
+#   update  pin CLAUDE_CODE_VERSION to npm's "latest" Claude Code, only if
+#           that is newer than the pin, and push it to master. Not
+#           "stable": that tag ran 3 weeks behind and kept a new model
+#           out of the boxes
 #   build   build that commit
 #   roll    set newTag to it and push; Flux restarts every box
 # GITHUB_TOKEN pushes do not start workflow runs, so these pushes do not
@@ -26,7 +27,7 @@ on:
   workflow_dispatch:
     inputs:
       update:
-        description: Update Claude Code to npm stable first, then roll the boxes
+        description: Update Claude Code to npm latest first, then roll the boxes
         type: boolean
         default: false
   schedule:
@@ -56,15 +57,15 @@ jobs:
       - id: bump
         run: |
           file=images/agent-box/Dockerfile
-          new=$(npm view @anthropic-ai/claude-code dist-tags.stable)
+          new=$(npm view @anthropic-ai/claude-code dist-tags.latest)
           cur=$(sed -n 's/^ARG CLAUDE_CODE_VERSION=//p' "$file")
           semver='^[0-9]+\.[0-9]+\.[0-9]+$'
           if ! [[ $new =~ $semver && $cur =~ $semver ]]; then
-            echo "::error::unexpected version: stable '$new', pinned '$cur'"
+            echo "::error::unexpected version: latest '$new', pinned '$cur'"
             exit 1
           fi
           if [ "$(printf '%s\n' "$cur" "$new" | sort -V | tail -n1)" = "$cur" ]; then
-            echo "Pinned $cur, npm stable $new: nothing to do."
+            echo "Pinned $cur, npm latest $new: nothing to do."
             exit 0
           fi
           sed -i "s/^ARG CLAUDE_CODE_VERSION=.*/ARG CLAUDE_CODE_VERSION=$new/" "$file"
