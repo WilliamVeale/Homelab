@@ -1,0 +1,21 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  labels:
+    app: nut-exporter
+    # Prometheus only picks up monitors with this label.
+    release: kube-prometheus-stack
+  name: nut-exporter
+spec:
+  selector:
+    matchLabels:
+      app: nut-exporter
+  endpoints:
+    - port: metrics
+      # The UPS values are here; /metrics has only the exporter's own numbers.
+      path: /ups_metrics
+      params:
+        ups:
+          - cyberpower
+      # The NUT driver reads the UPS every 30 s; a faster scrape adds nothing.
+      interval: 30s

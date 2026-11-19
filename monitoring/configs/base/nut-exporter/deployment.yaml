@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: nut-exporter
+  name: nut-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nut-exporter
+  template:
+    metadata:
+      labels:
+        app: nut-exporter
+    spec:
+      securityContext:
+        # The image runs as root by default; the exporter needs no privilege.
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - image: ghcr.io/druggeri/nut_exporter:3.3.0
+        name: nut-exporter
+        args:
+          # NUT (upsd) runs on the k-control host, not in the cluster. It lets
+          # anyone read variables without a login, so no secret is needed.
+          - --nut.server=192.168.0.90
+          # An empty value does not mean "all": the exporter falls back to its
+          # short default list, which has no runtime and no nominal power.
+          - --nut.vars_enable=battery.charge,battery.runtime,battery.voltage,battery.voltage.nominal,input.voltage,input.voltage.nominal,output.voltage,ups.load,ups.realpower.nominal,ups.status
+        ports:
+          - name: metrics
+            containerPort: 9199
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+              - ALL
+        # /metrics is the exporter's own page. It answers when upsd is down,
+        # so a UPS outage does not restart this pod.
+        readinessProbe:
+          httpGet:
+            path: /metrics
+            port: metrics
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /metrics
+            port: metrics
+          initialDelaySeconds: 10
+          periodSeconds: 30
+        resources:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+          limits:
+            memory: 64Mi

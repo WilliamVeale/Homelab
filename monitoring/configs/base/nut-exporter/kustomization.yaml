@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - deployment.yaml
+  - service.yaml
+  - servicemonitor.yaml
+configMapGenerator:
+  # The Grafana sidecar loads every ConfigMap with this label as a dashboard.
+  - name: nut-exporter-dashboard
+    files:
+      - ups-power.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      # Keep one fixed name. With a hash suffix, Flux makes a new ConfigMap
+      # and prunes the old one, and the sidecar then deletes the file that
+      # both of them wrote.
+      disableNameSuffixHash: true

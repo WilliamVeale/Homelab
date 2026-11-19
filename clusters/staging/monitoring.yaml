@@ -18,24 +18,23 @@ spec:
     provider: sops
     secretRef:
       name: sops-age
-# --- 
-# apiVersion: kustomize.toolkit.fluxcd.io/v1
-# kind: Kustomization
-# metadata:
-#   name: monitoring-configs
-#   namespace: flux-system
-# spec:
-#   interval: 1m
-# #  dependsOn:
-# #     name: infra-configs
-#   retryInterval: 1m
-#   timeout: 5m
-#   sourceRef:
-#     kind: GitRepository
-#     name: flux-system
-#   path: ./monitoring/configs/staging
-#   prune: true
-#   # decryption:
-#   #   provider: sops
-#   #   secretRef:
-#   #     name: sops-age
+---
+# Things that need the CRDs from kube-prometheus-stack (ServiceMonitor), so
+# they are a separate Kustomization: on a new cluster this one fails and
+# retries until the chart is installed, and does not block the chart.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: monitoring-configs
+  namespace: flux-system
+spec:
+  interval: 1m
+  dependsOn:
+    - name: monitoring-controllers
+  retryInterval: 1m
+  timeout: 5m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./monitoring/configs/staging
+  prune: true
