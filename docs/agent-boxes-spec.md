@@ -93,6 +93,7 @@ Wrong:
 | `WilliamVeale/vikunja` (kanban skill) | box `vikunja` via PR; user merges | every box, read-only, for `/kanban` | `SHARED_RO_TOKEN` (box `vikunja` uses its own `GH_TOKEN`) |
 | `WilliamVeale/notebook` (research, specs) | box `general` via PR; user merges | every box, read-only mirror (since 2026-11-08) | `SHARED_RO_TOKEN` (box `general` uses its own `GH_TOKEN`) |
 | each box repo | that box, branches only; user merges | that box | per-box `GH_TOKEN` |
+| the repos in `REFERENCE_REPOS` (work Drupal sites, AKS cluster; since 2026-11-18) | no box through this path | every box, read-only mirror in `~/reference` | none for a public repo; `REFERENCE_RO_TOKEN` for a private one |
 | `WilliamVeale/Homelab` | laptop only | no box | none |
 
 Tokens are GitHub fine-grained personal access tokens.
@@ -103,6 +104,10 @@ Tokens are GitHub fine-grained personal access tokens.
 - `SHARED_RO_TOKEN`: resource owner `WilliamVeale`. Repos: `claude-memory`,
   `vikunja` and `notebook` (added 2026-11-08). Permissions: Contents read,
   Metadata read.
+- `REFERENCE_RO_TOKEN` (added 2026-11-18): resource owner
+  `utkdigitalinitiatives`. Repos: only the private ones in
+  `REFERENCE_REPOS`. Permissions: Contents read, Metadata read. A second
+  token because a fine-grained token has one resource owner.
 
 ### 6.2 Secrets in namespace `agents`
 
@@ -110,6 +115,7 @@ Tokens are GitHub fine-grained personal access tokens.
 |---|---|---|---|
 | `claude-token` | all boxes | `CLAUDE_CODE_OAUTH_TOKEN` | keep. Accepted: one subscription, so a box can spend the user's Claude usage |
 | `shared-ro-token` | all boxes | `SHARED_RO_TOKEN` | **new** |
+| `reference-ro-token` | all boxes | `REFERENCE_RO_TOKEN` | added 2026-11-18; optional in the StatefulSet, so a box starts without it |
 | `vikunja-token` | all boxes | `VIKUNJA_URL`, `VIKUNJA_TOKEN` | **new value**: a Vikunja API token made for boxes, not the laptop token. Scopes: the "Needed for the normal /kanban loop" list plus `tasks: update` in `~/projects/vikunja/docs/api-notes.md`, section "Token scopes" |
 | `box-secrets-<name>` | one box | `GH_TOKEN`, plus that project's secrets | `GH_TOKEN` scoped to the box repo only |
 
@@ -184,6 +190,40 @@ whose remote ref is the remote's default branch (from
 VM). It is a seatbelt, not a lock: GitHub rulesets are the lock where
 the plan allows them (section 6.7).
 
+**MCP servers (added 2026-11-04, images `aa9cc03` and `5aecdc6`).** Git
+owns the list: ConfigMap `agent-box-mcp`
+(`apps/staging/agents/mcp-servers.yaml`) is mounted read-only (optional) at
+`/etc/agent-box-mcp`. At every pod start, before sshd, box-init replaces
+`mcpServers` (user scope) in `~/.claude.json` with it, so a server taken out
+of git goes away. Local-scope servers added by hand (`claude mcp add`) stay.
+A missing or broken file logs and leaves the config alone. Tokens never go in
+the list: an entry names a box env var as `${VAR}` and Claude Code fills it
+in when it starts the server (verified in a box on 2.1.314). Every box gets:
+
+- `context7`: the remote endpoint `https://mcp.context7.com/mcp`, not
+  `npx`, so no third-party code runs in the box with its tokens.
+- `terraform`: `terraform-mcp-server` 1.4.1 from the image (SHA-256
+  pinned; boxes have no Docker), `--toolsets=registry` only, because the
+  other toolsets need an HCP Terraform token.
+- `github`: `github-mcp-server` 2.0.3 from the image (SHA-256 pinned),
+  `--read-only`, with `GITHUB_PERSONAL_ACCESS_TOKEN=${GH_TOKEN}`, so it
+  reaches only the box repo and `EXTRA_REPOS`. Read-only because MCP write
+  tools would be a second write path past the pre-push guard; writes stay
+  with `git push` and `gh`. Verified: reads of the box repos work, a read of
+  private `claude-memory` gets 404.
+
+**Mods (added 2026-11-04).** Claude Code mods live in the shared repo,
+`claude-memory/global/mods/<name>`, so a box gets each mod edit at its next
+session start, like a skill. `CLAUDE_CODE_PLUGIN_DIRS` in the
+`agent-box-shared` ConfigMap (`apps/staging/agents/shared-config.yaml`)
+lists them, `:`-separated; box-init hands it to SSH sessions with the rest of
+the pod env. The laptop points its own `CLAUDE_CODE_PLUGIN_DIRS` at the same
+folder, so there is one copy. Boxes load `context-meter` (context fill and
+prompt-cache bars above the prompt; Herdr shows the box terminal as it is,
+so the bars appear in the Herdr pane). Verified on 2.1.314: 11 tests pass
+and `claude plugin list` shows it loaded. Not `attention-chime`: Herdr
+already plays a sound on blocked or done, and a box has no speaker.
+
 **Notebook (added 2026-11-08).** `NOTEBOOK_REPO=WilliamVeale/notebook` in the
 `agent-box-shared` ConfigMap. Box `general` writes it by PR; every other box
 gets a read-only mirror at `~/projects/notebook`, so a spec written there can
@@ -199,6 +239,32 @@ so Claude Code never reads its `CLAUDE.md` at start, and it is never an
 folder in plain text, never as an `@` import, and says to read only the files
 a task needs. Accepted: the work box `volumes-infra` can read these personal
 notes too, so nothing goes in `notebook` that a work repo must not see.
+
+**Reference repos (added 2026-11-18).** `REFERENCE_REPOS` in the
+`agent-box-shared` ConfigMap lists repos every box may read and never works
+on: the three Drupal sites, app and infra (`mccarthy-index`,
+`mccarthy-infra`, `volumes`, `volumes-infra`, `lib-main`, `lib-main-infra`)
+and `Asimov-k8s`. The purpose: a box, mostly `general`, reads how the
+existing infra works and writes a spec that fits it. Each box gets read-only
+mirrors at `~/reference/<repo>`, not in `~/projects`, so a mirror is never
+taken for a working copy. `/usr/local/bin/reference-pull`
+(`images/agent-box/reference-pull`) works like `notebook-pull`: box-init runs
+it at pod start and a third SessionStart hook runs it at every session
+start. It clones what is missing, resets the rest to `origin/HEAD` (local
+edits are thrown away), and removes a mirror whose repo left the list. All
+repos run at the same time, and a lock lets only one run work at a time. A
+box that works on a listed repo (`BOX_REPO`, `EXTRA_REPOS`) gets no mirror of
+it. Tokens: a public repo is cloned with no token at all, so nothing in the
+box can write it. A private repo (`volumes`) is read with
+`REFERENCE_RO_TOKEN`; box-init sets its credential helper for the listed
+repos only when the token is set, before the `GH_TOKEN` helpers, so
+`GH_TOKEN` wins in the box that works on the repo. Without the token the
+private mirrors are skipped and the rest still work. This does not break
+"never give a box `mccarthy-index`": that rule is about a token that can
+write, and the mirror has none. Context: the same rule as the notebook.
+Nothing loads a mirror into a session; `CLAUDE.box.md` names the folder in
+plain text. Accepted: every box, the personal ones too, can read the private
+work repos on the list.
 
 **Memory.** Default location, `~/.claude/projects/<slug>/memory` on the PVC.
 No sync. Loss of the PVC loses the notes; that is accepted until Velero exists.
@@ -408,3 +474,35 @@ Lessons:
   working. Ask before each push.
 - Stop at each human-only step and say exactly what is needed.
 - When done, record state in `CLAUDE-TODO.md`, the memory file, and card #19.
+
+## 12. Decisions and rejected alternatives (2026-10-31)
+
+- **One-way trust, not a split repo.** The review offered moving `bin/` and
+  `global/` to a second repo while boxes kept write access to
+  `claude-memory` for memory notes. Rejected: shared memory was never a
+  goal, and the laptop should trust nothing a box can write.
+- **Not "the laptop stops running pulled code" alone.** `CLAUDE.md`, skills
+  and agents are symlinks into the pulled repo, so a pull still changed what
+  the laptop loaded. It closed half the hole.
+- **Skills by read-only pull, not baked into the image.** Baking means every
+  skill edit rebuilds the image and rolls the pods, which kills running
+  sessions.
+- **Memory on the PVC, not one private repo per box.** Fewer repos and
+  tokens. Losing the PVC also loses the box's unpushed work, so the notes
+  are the smaller loss. Revisit when Velero exists.
+- **Shared Claude OAuth token kept.** Per-box tokens would allow per-box
+  revocation but need a `claude setup-token` run per box. Deferred.
+- **Repo keeps the name `claude-memory`** although it holds no memory, so no
+  path changes on the laptop, in the image or in the global `CLAUDE.md`.
+- **Delete the v1 box, do not migrate it.** It was a proof of concept with
+  nothing worth keeping, and this removed all migration code from box-init.
+- **Fix in place, not rebuild.** The review passed the pod hardening,
+  NetworkPolicy, Pod Security, Tailscale, image and CI. Only the sharing
+  layer was wrong.
+- **Ruleset with no bypass actors and zero required approvals.** A
+  fine-grained PAT acts as the user, who is an org admin, so an admin bypass
+  would let the box through. GitHub does not let a user approve their own
+  PR, so required approvals would block the user too.
+- **PR-only everywhere, even where GitHub cannot enforce it.** The user
+  chose to be the merge gate. On GitHub Free private repos that is a written
+  rule plus the pre-push guard.

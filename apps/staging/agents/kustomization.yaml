@@ -13,6 +13,11 @@ resources:
   # scripts/seal-secret.sh has written the file; an entry for a missing file
   # breaks the whole apps Kustomization. No box can start without it.
   - shared-ro-token-secret.yaml
+  # REFERENCE_RO_TOKEN: read-only token for the private repos in
+  # REFERENCE_REPOS (shared-config.yaml). Uncomment once
+  # scripts/seal-secret.sh has written the file. Boxes start without it and
+  # mirror only the public repos.
+  # - reference-ro-token-secret.yaml
   # Boxes. scripts/new-box.sh appends to this list.
   - vikunja
   - volumes-infra

@@ -16,6 +16,23 @@ data:
   # ~/projects/notebook (images/agent-box/notebook-pull) unless it is the
   # box's own repo. A clone only: nothing loads it into a session's context.
   NOTEBOOK_REPO: WilliamVeale/notebook
+  # Repos every box may read and never works on: how the Drupal sites and
+  # the AKS cluster are built, so a box can write a spec that fits them.
+  # Read-only mirrors in ~/reference (images/agent-box/reference-pull),
+  # refreshed at every session start. Clones only: nothing loads them into a
+  # session's context. A box that works on one of them (BOX_REPO,
+  # EXTRA_REPOS) keeps its working copy in ~/projects and gets no mirror.
+  # Public repos need no token. Private ones (volumes) need
+  # REFERENCE_RO_TOKEN, Secret reference-ro-token. Taking a repo off this
+  # list removes its mirror from every box.
+  REFERENCE_REPOS: >-
+    utkdigitalinitiatives/mccarthy-index
+    utkdigitalinitiatives/mccarthy-infra
+    utkdigitalinitiatives/volumes
+    utkdigitalinitiatives/volumes-infra
+    utkdigitalinitiatives/lib-main
+    utkdigitalinitiatives/lib-main-infra
+    utkdigitalinitiatives/Asimov-k8s
   # Claude Code mods, loaded like `claude --plugin-dir`. They live in the
   # shared repo above, so a mod edit reaches boxes at the next session start.
   # Separate paths with ':'.
