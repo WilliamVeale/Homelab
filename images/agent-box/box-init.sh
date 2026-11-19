@@ -6,7 +6,7 @@
 #
 # Trust flows one way (docs/agent-boxes-spec.md in the Homelab repo): the
 # box writes only its own repo (and any EXTRA_REPOS), on branches, and only
-# reads the shared repos.
+# reads the shared repos and the reference repos.
 # Claude Code settings come from /etc/claude-code/managed-settings.json in
 # the image, so nothing here writes ~/.claude/settings.json.
 set -uo pipefail
@@ -56,6 +56,17 @@ helper() { # <owner/repo> <name of the env var that holds the token>
 [ -n "${SHARED_REPO:-}" ] && helper "$SHARED_REPO" SHARED_RO_TOKEN
 [ -n "${KANBAN_REPO:-}" ] && helper "$KANBAN_REPO" SHARED_RO_TOKEN
 [ -n "${NOTEBOOK_REPO:-}" ] && helper "$NOTEBOOK_REPO" SHARED_RO_TOKEN
+# REFERENCE_REPOS: repos every box may read and never works on, mirrored to
+# ~/reference by reference-pull. A public one needs no token and gets none.
+# REFERENCE_RO_TOKEN (Contents read, nothing more) reads the private ones;
+# without it they are skipped. Before EXTRA_REPOS and the box repo, so
+# GH_TOKEN wins for a repo this box works on.
+if [ -n "${REFERENCE_RO_TOKEN:-}" ]; then
+  read -ra _ref <<< "${REFERENCE_REPOS:-}"
+  for r in "${_ref[@]}"; do
+    [[ $r =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] && helper "$r" REFERENCE_RO_TOKEN
+  done
+fi
 # EXTRA_REPOS: more repos (space-separated owner/repo) that this box works
 # on with the same GH_TOKEN, under the same branch-and-PR rules. For
 # example an infra box that sometimes opens a PR on its app repo. The token
@@ -144,6 +155,11 @@ fi
 # ~/projects. notebook-pull clones it and refreshes it; the SessionStart hook
 # runs it again at every session start. It skips the box that owns the repo.
 notebook-pull
+
+# Repos a box reads to learn how things work (REFERENCE_REPOS), read-only
+# mirrors in ~/reference. Same pattern: here at pod start, and the
+# SessionStart hook at every session start.
+reference-pull
 
 # Shared skills and global rules. ~/claude-memory is a read-only mirror:
 # local edits are thrown away on purpose. The SessionStart hook in the

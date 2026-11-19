@@ -12,6 +12,11 @@
             "type": "command",
             "command": "/usr/local/bin/notebook-pull >/dev/null 2>&1; exit 0",
             "timeout": 60
+          },
+          {
+            "type": "command",
+            "command": "/usr/local/bin/reference-pull >/dev/null 2>&1; exit 0",
+            "timeout": 60
           }
         ]
       }

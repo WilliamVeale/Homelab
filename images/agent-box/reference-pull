@@ -1,0 +1,79 @@
+#!/bin/sh
+# Keeps ~/reference/<repo> a read-only mirror of each repo in REFERENCE_REPOS
+# (space-separated owner/repo): repos a box reads to learn how things work,
+# for example to write a spec, and never works on. Clones a repo when it is
+# missing, then makes it match GitHub. box-init runs this at pod start; the
+# SessionStart hook in managed-settings.json runs it at every session start.
+#
+# A public repo needs no token. A private one is read with
+# REFERENCE_RO_TOKEN; box-init sets the credential helper for it.
+#
+# ~/reference belongs to this script. Local edits and new files in a mirror
+# are thrown away on purpose, and a mirror whose repo left the list is
+# removed, so taking a repo out of git also takes its copy out of the box.
+# A repo this box works on (BOX_REPO, EXTRA_REPOS) gets no mirror: its
+# working copy is in ~/projects.
+#
+# Always exits 0, and says nothing unless a step fails (then one line on
+# stderr): a network problem must never block a session. The hook sends all
+# output to /dev/null, because hook stdout goes into Claude's context.
+set -u
+root=$HOME/reference
+[ -n "${REFERENCE_REPOS:-}" ] || [ -d "$root" ] || exit 0
+mkdir -p "$root" || exit 0
+export GIT_TERMINAL_PROMPT=0
+
+# One run at a time. Two sessions that start together must not fetch and
+# reset the same clone; the second run has nothing to add, so it leaves.
+exec 9> "$root/.lock" || exit 0
+flock -n 9 || exit 0
+
+mirror() { # <owner/repo>
+  dir=$root/${1#*/}
+  url=https://github.com/$1.git
+  # Under the 60 s hook timeout. A killed clone removes its own directory.
+  if [ ! -e "$dir" ]; then
+    timeout 50 git clone -q "$url" "$dir" \
+      || echo "reference-pull: could not clone $1; a private repo needs REFERENCE_RO_TOKEN" >&2
+    return 0
+  fi
+  if [ "$(git -C "$dir" remote get-url origin 2>/dev/null)" != "$url" ]; then
+    echo "reference-pull: $dir is not a clone of $1; left alone" >&2
+    return 0
+  fi
+  { timeout 30 git -C "$dir" fetch -q origin \
+      && git -C "$dir" reset -q --hard origin/HEAD \
+      && git -C "$dir" clean -q -fd; } \
+    || echo "reference-pull: could not refresh $1; using the copy on disk" >&2
+}
+
+keep=" "
+for repo in ${REFERENCE_REPOS:-}; do
+  case $repo in
+    */*/* | /* | */ | */. | */.. | *[!A-Za-z0-9_./-]*)
+      echo "reference-pull: skipped '$repo'; not owner/repo" >&2
+      continue ;;
+    */*) ;;
+    *)
+      echo "reference-pull: skipped '$repo'; not owner/repo" >&2
+      continue ;;
+  esac
+  case " ${BOX_REPO:-} ${EXTRA_REPOS:-} " in
+    *" $repo "*) continue ;;
+  esac
+  keep="$keep${repo#*/} "
+  mirror "$repo" &
+done
+wait
+
+for d in "$root"/*/; do
+  [ -d "$d" ] || continue
+  name=$(basename "$d")
+  case $keep in
+    *" $name "*) ;;
+    *)
+      rm -rf -- "${root:?}/${name:?}"
+      echo "reference-pull: removed $root/$name; not in REFERENCE_REPOS" >&2 ;;
+  esac
+done
+exit 0
