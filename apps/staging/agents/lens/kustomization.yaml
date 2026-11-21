@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../base/agent-box
+  - box-secrets.yaml
+nameSuffix: -lens
+labels:
+  - pairs:
+      app.kubernetes.io/instance: lens
+    includeSelectors: true
+configMapGenerator:
+  - name: box-config
+    literals:
+      - BOX_NAME=lens
+      - BOX_REPO=WilliamVeale/cataract-lens-tracker
+      - GIT_USER_NAME=William Veale
+      - GIT_USER_EMAIL=26966411+WilliamVeale@users.noreply.github.com
+patches:
+  - target:
+      kind: Service
+    patch: |-
+      - op: add
+        path: /metadata/annotations/tailscale.com~1hostname
+        value: ws-lens

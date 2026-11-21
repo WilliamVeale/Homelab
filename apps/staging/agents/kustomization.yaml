@@ -22,3 +22,4 @@ resources:
   - vikunja
   - volumes-infra
   - general
+  - lens
