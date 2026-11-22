@@ -16,7 +16,7 @@ FROM node:22-bookworm-slim
 # Claude Code cannot self-update as a non-root user. The weekly run of
 # .github/workflows/agent-box-image.yml bumps CLAUDE_CODE_VERSION to npm's
 # latest version and rolls the boxes. Keep this line's format: it seds it.
-ARG CLAUDE_CODE_VERSION=2.1.326
+ARG CLAUDE_CODE_VERSION=2.1.330
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
